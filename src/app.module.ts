@@ -21,6 +21,7 @@ import hubtelConfig from './config/hubtel.config';
     OrdersModule,
     OtpModule,
     PaymentsModule,
+    
   ],
 })
 export class AppModule {}
