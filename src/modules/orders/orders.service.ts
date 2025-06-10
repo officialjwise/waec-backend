@@ -4,8 +4,8 @@ import { SupabaseService } from '../../common/services/supabase.service';
 import { PaymentsService } from '../payments/payments.service';
 import { InitiateOrderDto } from '../../common/dtos/order.dto';
 import { Checker } from '../../common/interfaces/checker.interface';
-import { v4 as uuidv4 } from 'uuid';
-
+//import { v4 as uuidv4 } from 'uuid';
+const { v4: uuidv4 } = require('uuid');
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
