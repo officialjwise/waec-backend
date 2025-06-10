@@ -1,19 +1,24 @@
 import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/services/supabase.service';
+import { parse } from 'csv-parse';
+import { Readable } from 'stream';
 
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
+  private readonly LOW_STOCK_THRESHOLD = 10;
 
   constructor(private supabaseService: SupabaseService) {}
 
-  async listOrders(filters: { status?: string; phone?: string; startDate?: string; endDate?: string }) {
+  async listOrders(filters: { status?: string; phone?: string; email?: string; waecType?: string; startDate?: string; endDate?: string }) {
     try {
       this.logger.debug(`Listing orders with filters: ${JSON.stringify(filters)}`);
       let query = this.supabaseService.getClient().from('orders').select('id, phone, email, waec_type, quantity, status, created_at, paystack_ref');
 
       if (filters.status) query = query.eq('status', filters.status);
       if (filters.phone) query = query.eq('phone', filters.phone.replace(/[+-\s]/g, ''));
+      if (filters.email) query = query.eq('email', filters.email);
+      if (filters.waecType) query = query.eq('waec_type', filters.waecType);
       if (filters.startDate) query = query.gte('created_at', filters.startDate);
       if (filters.endDate) query = query.lte('created_at', filters.endDate);
 
@@ -24,7 +29,12 @@ export class AdminService {
         throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
       }
 
-      return { orders: data, count: data.length };
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Orders retrieved successfully',
+        count: data.length,
+        data: data,
+      };
     } catch (error) {
       this.logger.error(`List orders error: ${error.message}`);
       throw new HttpException('Failed to list orders', HttpStatus.INTERNAL_SERVER_ERROR);
@@ -42,14 +52,13 @@ export class AdminService {
         .single();
 
       if (orderError || !order) {
-        this.logger.warn(`Order not found: ${id}`);
         throw new HttpException('Order not found', HttpStatus.NOT_FOUND);
       }
 
       const { data: checkers, error: checkerError } = await this.supabaseService
         .getClient()
         .from('checkers')
-        .select('id, serial, pin, waec_type, created_at')
+        .select('id, serial, order_id, waec_type, created_at')
         .eq('order_id', id);
 
       if (checkerError) {
@@ -57,7 +66,12 @@ export class AdminService {
         throw new HttpException(checkerError.message, HttpStatus.INTERNAL_SERVER_ERROR);
       }
 
-      return { order, checkers };
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Order details retrieved successfully',
+        count: 1,
+        data: [{ order, checkers }],
+      };
     } catch (error) {
       this.logger.error(`Get order details error: ${error.message}`);
       throw error instanceof HttpException ? error : new HttpException('Failed to get order details', HttpStatus.INTERNAL_SERVER_ERROR);
@@ -67,10 +81,12 @@ export class AdminService {
   async listCheckers(filters: { waecType?: string; assigned?: boolean }) {
     try {
       this.logger.debug(`Listing checkers with filters: ${JSON.stringify(filters)}`);
-      let query = this.supabaseService.getClient().from('checkers').select('id, serial, pin, waec_type, order_id, created_at');
+      let query = this.supabaseService.getClient().from('checkers').select('id, serial, order_id, waec_type, created_at');
 
       if (filters.waecType) query = query.eq('waec_type', filters.waecType);
-      if (filters.assigned !== undefined) query = filters.assigned ? query.is('order_id', null) : query.not('order_id', 'is', null);
+      if (filters.assigned !== undefined) {
+        query = filters.assigned ? query.not('order_id', 'is', null) : query.is('order_id', null);
+      }
 
       const { data, error } = await query;
 
@@ -79,26 +95,43 @@ export class AdminService {
         throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
       }
 
-      return { checkers: data, count: data.length };
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Checkers retrieved successfully',
+        count: data.length,
+        data: data,
+      };
     } catch (error) {
       this.logger.error(`List checkers error: ${error.message}`);
       throw new HttpException('Failed to list checkers', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
-  async addCheckers(serials: string[], pins: string[], waec_type: string) {
+  async addCheckersFromCsv(file: Express.Multer.File) {
     try {
-      this.logger.debug(`Adding ${serials.length} checkers for type: ${waec_type}`);
-      if (serials.length !== pins.length) {
-        throw new HttpException('Serials and pins arrays must have the same length', HttpStatus.BAD_REQUEST);
+      this.logger.debug(`Processing CSV file: ${file.originalname}`);
+      if (!file.mimetype.includes('csv')) {
+        throw new HttpException('Only CSV files are supported', HttpStatus.BAD_REQUEST);
       }
 
-      const checkers = serials.map((serial, index) => ({
-        serial,
-        pin: pins[index],
-        waec_type,
-        created_at: new Date().toISOString(),
-      }));
+      const checkers: Array<{ serial: string; pin: string; waec_type: string; created_at: string }> = [];
+      const parser = parse({ columns: true, skip_empty_lines: true });
+
+      const stream = Readable.from(file.buffer);
+      for await (const record of stream.pipe(parser)) {
+        const { serial, pin, waec_type } = record;
+        if (!serial || !pin || !waec_type) {
+          throw new HttpException('Invalid CSV format: Missing required fields', HttpStatus.BAD_REQUEST);
+        }
+        if (!['BECE', 'WASSCE', 'NOVDEC'].includes(waec_type)) {
+          throw new HttpException(`Invalid waec_type: ${waec_type}`, HttpStatus.BAD_REQUEST);
+        }
+        checkers.push({ serial, pin, waec_type, created_at: new Date().toISOString() });
+      }
+
+      if (checkers.length === 0) {
+        throw new HttpException('No valid checkers found in CSV', HttpStatus.BAD_REQUEST);
+      }
 
       const { data, error } = await this.supabaseService.getClient().from('checkers').insert(checkers).select('id, serial, waec_type');
 
@@ -107,10 +140,144 @@ export class AdminService {
         throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
       }
 
-      return { message: 'Checkers added successfully', checkers: data };
+      return {
+        statusCode: HttpStatus.CREATED,
+        message: 'Checkers added successfully from CSV',
+        count: data.length,
+        data: data,
+      };
     } catch (error) {
       this.logger.error(`Add checkers error: ${error.message}`);
       throw error instanceof HttpException ? error : new HttpException('Failed to add checkers', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async previewCheckersCsv(file: Express.Multer.File) {
+    try {
+      this.logger.debug(`Previewing CSV file: ${file.originalname}`);
+      if (!file.mimetype.includes('csv')) {
+        throw new HttpException('Only CSV files are supported', HttpStatus.BAD_REQUEST);
+      }
+
+      const records: Array<{ serial: string; pin: string; waec_type: string }> = [];
+      const parser = parse({ columns: true, skip_empty_lines: true });
+
+      const stream = Readable.from(file.buffer);
+      for await (const record of stream.pipe(parser)) {
+        const { serial, pin, waec_type } = record;
+        if (!serial || !pin || !waec_type) {
+          throw new HttpException('Invalid CSV format: Missing required fields', HttpStatus.BAD_REQUEST);
+        }
+        if (!['BECE', 'WASSCE', 'NOVDEC'].includes(waec_type)) {
+          throw new HttpException(`Invalid waec_type: ${waec_type}`, HttpStatus.BAD_REQUEST);
+        }
+        records.push({ serial, pin, waec_type });
+      }
+
+      if (records.length === 0) {
+        throw new HttpException('No valid records found in CSV', HttpStatus.BAD_REQUEST);
+      }
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'CSV preview generated successfully',
+        count: records.length,
+        data: records,
+      };
+    } catch (error) {
+      this.logger.error(`Preview CSV error: ${error.message}`);
+      throw error instanceof HttpException ? error : new HttpException('Failed to preview CSV', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async getInventory() {
+    try {
+      this.logger.debug('Fetching inventory summary');
+      const { data: checkers, error: checkerError } = await this.supabaseService
+        .getClient()
+        .from('checkers')
+        .select('waec_type, order_id');
+
+      if (checkerError) {
+        this.logger.error(`Error fetching checkers: ${checkerError.message}`);
+        throw new HttpException(checkerError.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      type WaecSummary = { total: number; available: number };
+      const summary: Record<string, WaecSummary> = {};
+      const lowStock: string[] = [];
+
+      checkers.forEach(({ waec_type, order_id }) => {
+        if (!summary[waec_type]) {
+          summary[waec_type] = { total: 0, available: 0 };
+        }
+        summary[waec_type].total += 1;
+        if (!order_id) summary[waec_type].available += 1;
+        if (summary[waec_type].available < this.LOW_STOCK_THRESHOLD && !lowStock.includes(waec_type)) {
+          lowStock.push(waec_type);
+        }
+      });
+
+      const byWaecType = Object.entries(summary).map(([waec_type, { total, available }]) => ({
+        waec_type,
+        total,
+        available,
+      }));
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Inventory summary retrieved successfully',
+        count: byWaecType.length,
+        data: { byWaecType, lowStock },
+      };
+    } catch (error) {
+      this.logger.error(`Get inventory error: ${error.message}`);
+      throw new HttpException('Failed to get inventory', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async listLogs(filters: { action?: string; adminId?: string }) {
+    try {
+      this.logger.debug(`Listing logs with filters: ${JSON.stringify(filters)}`);
+      
+      // First, let's see what's in the logs table
+      const { data: allLogs, error: allLogsError } = await this.supabaseService
+        .getClient()
+        .from('logs')
+        .select('id, action, admin_id, details, created_at')
+        .order('created_at', { ascending: false });
+      
+      console.log('🔍 All logs in database:', allLogs);
+      
+      let query = this.supabaseService.getClient().from('logs').select('id, action, admin_id, details, created_at');
+  
+      if (filters.action) {
+        console.log('🔍 Filtering by action:', filters.action);
+        query = query.ilike('action', `%${filters.action}%`);
+      }
+      if (filters.adminId) {
+        console.log('🔍 Filtering by admin_id:', filters.adminId);
+        query = query.eq('admin_id', filters.adminId);
+      }
+  
+      const { data, error } = await query.order('created_at', { ascending: false });
+  
+      if (error) {
+        this.logger.error(`Error listing logs: ${error.message}`);
+        throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+  
+      console.log('🔍 Filtered results:', data);
+  
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Logs retrieved successfully',
+        count: data.length,
+        data: data,
+      };
+    } catch (error) {
+      this.logger.error(`List logs error: ${error.message}`);
+      throw new HttpException('Failed to list logs', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
@@ -129,7 +296,12 @@ export class AdminService {
         throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
       }
 
-      return { otp_requests: data, count: data.length };
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'OTP requests retrieved successfully',
+        count: data.length,
+        data: data,
+      };
     } catch (error) {
       this.logger.error(`List OTP requests error: ${error.message}`);
       throw new HttpException('Failed to list OTP requests', HttpStatus.INTERNAL_SERVER_ERROR);

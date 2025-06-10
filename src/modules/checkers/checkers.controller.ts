@@ -2,19 +2,11 @@ import { Controller, Post, Get, Query, UseGuards, UploadedFile, UseInterceptors,
 import { CheckersService } from './checkers.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../common/guards/optional-auth.guard'; // Add this import
-import { FileInterceptor } from '@nestjs/platform-express';
 import { User } from '../../common/decorators/user.decorator';
 
 @Controller('api/checkers')
 export class CheckersController {
   constructor(private readonly checkersService: CheckersService) {}
-
-  @Post('upload')
-  @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('file'))
-  async uploadCheckers(@UploadedFile() file: Express.Multer.File) {
-    return this.checkersService.uploadCheckers(file);
-  }
 
   @Get('availability')
   @UseGuards(OptionalJwtAuthGuard) // Use optional auth guard

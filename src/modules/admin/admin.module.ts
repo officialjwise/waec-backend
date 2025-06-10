@@ -4,8 +4,7 @@ import { AdminService } from './admin.service';
 import { SupabaseService } from '../../common/services/supabase.service';
 
 @Module({
-  imports: [SupabaseService],
   controllers: [AdminController],
-  providers: [AdminService],
+  providers: [AdminService, SupabaseService],
 })
 export class AdminModule {}

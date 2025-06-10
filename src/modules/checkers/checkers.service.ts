@@ -8,61 +8,61 @@ import { CheckerDto, CheckerAvailabilityResponseDto, StockAvailabilityDto } from
 export class CheckersService {
   constructor(private supabaseService: SupabaseService) {}
 
-  async uploadCheckers(file: Express.Multer.File) {
-    if (!file) {
-      throw new HttpException('No file uploaded', HttpStatus.BAD_REQUEST);
-    }
-    if (!file.originalname.endsWith('.csv')) {
-      throw new HttpException('File must be a CSV', HttpStatus.BAD_REQUEST);
-    }
+  // async uploadCheckers(file: Express.Multer.File) {
+  //   if (!file) {
+  //     throw new HttpException('No file uploaded', HttpStatus.BAD_REQUEST);
+  //   }
+  //   if (!file.originalname.endsWith('.csv')) {
+  //     throw new HttpException('File must be a CSV', HttpStatus.BAD_REQUEST);
+  //   }
 
-    const validWaecTypes = ['BECE', 'WASSCE', 'NOVDEC', 'CSSPS'];
-    const checkers: CheckerDto[] = [];
-    let hasRequiredHeaders = false;
+  //   const validWaecTypes = ['BECE', 'WASSCE', 'NOVDEC', 'CSSPS'];
+  //   const checkers: CheckerDto[] = [];
+  //   let hasRequiredHeaders = false;
 
-    const parser = Readable.from(file.buffer).pipe(
-      parse({
-        columns: true,
-        skip_empty_lines: true,
-        trim: true,
-      }),
-    );
+  //   const parser = Readable.from(file.buffer).pipe(
+  //     parse({
+  //       columns: true,
+  //       skip_empty_lines: true,
+  //       trim: true,
+  //     }),
+  //   );
 
-    for await (const record of parser) {
-      if (!hasRequiredHeaders) {
-        if (!record.serial || !record.pin || !record.waec_type) {
-          throw new HttpException('CSV must contain serial, pin, and waec_type columns', HttpStatus.BAD_REQUEST);
-        }
-        hasRequiredHeaders = true;
-      }
+  //   for await (const record of parser) {
+  //     if (!hasRequiredHeaders) {
+  //       if (!record.serial || !record.pin || !record.waec_type) {
+  //         throw new HttpException('CSV must contain serial, pin, and waec_type columns', HttpStatus.BAD_REQUEST);
+  //       }
+  //       hasRequiredHeaders = true;
+  //     }
 
-      const waec_type = record.waec_type.toUpperCase();
-      if (!validWaecTypes.includes(waec_type)) {
-        throw new HttpException(`Invalid waec_type: ${waec_type}`, HttpStatus.BAD_REQUEST);
-      }
+  //     const waec_type = record.waec_type.toUpperCase();
+  //     if (!validWaecTypes.includes(waec_type)) {
+  //       throw new HttpException(`Invalid waec_type: ${waec_type}`, HttpStatus.BAD_REQUEST);
+  //     }
 
-      checkers.push({
-        serial: record.serial,
-        pin: record.pin,
-        waec_type: waec_type as 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS',
-      });
-    }
+  //     checkers.push({
+  //       serial: record.serial,
+  //       pin: record.pin,
+  //       waec_type: waec_type as 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS',
+  //     });
+  //   }
 
-    if (checkers.length === 0) {
-      throw new HttpException('No valid checkers found in CSV', HttpStatus.BAD_REQUEST);
-    }
+  //   if (checkers.length === 0) {
+  //     throw new HttpException('No valid checkers found in CSV', HttpStatus.BAD_REQUEST);
+  //   }
 
-    const { error } = await this.supabaseService
-      .getClient()
-      .from('checkers')
-      .insert(checkers);
+  //   const { error } = await this.supabaseService
+  //     .getClient()
+  //     .from('checkers')
+  //     .insert(checkers);
 
-    if (error) {
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
-    }
+  //   if (error) {
+  //     throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+  //   }
 
-    return { message: 'Checkers uploaded successfully', count: checkers.length };
-  }
+  //   return { message: 'Checkers uploaded successfully', count: checkers.length };
+  // }
   async getAvailability(
     waec_type?: 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS',
     limit: number = 10,
