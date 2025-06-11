@@ -6,6 +6,7 @@ import { InitiateOrderDto } from '../../common/dtos/order.dto';
 import { Checker } from '../../common/interfaces/checker.interface';
 //import { v4 as uuidv4 } from 'uuid';
 const { v4: uuidv4 } = require('uuid');
+
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
@@ -192,12 +193,22 @@ export class OrdersService {
 
       this.logger.debug(`Payment verified successfully: ${orderId}`);
 
+      // Return response in the format expected by frontend
       return {
-        message: 'Payment verified, checkers assigned and sent via SMS',
-        order_id: orderId,
-        checkers,
-        redirect_url: `${this.configService.get('paystack.callbackUrl')}?order_id=${orderId}&status=success`,
         status: 'success',
+        message: 'Payment verified successfully',
+        order: {
+          id: order.id,
+          reference: order.paystack_ref,
+          status: 'paid',
+          waec_type: order.waec_type,
+          quantity: order.quantity,
+          phone_number: order.phone,
+          total_amount: order.total_amount,
+          email: order.email,
+          created_at: order.created_at,
+          checkers: checkers
+        }
       };
     } else {
       // Update order status to failed
@@ -214,11 +225,21 @@ export class OrdersService {
 
       this.logger.debug(`Payment failed: ${orderId}`);
 
+      // Return failed response in consistent format
       return {
-        message: 'Payment failed',
-        order_id: orderId,
-        redirect_url: `${this.configService.get('paystack.failureUrl')}?order_id=${orderId}&status=failed`,
         status: 'failed',
+        message: 'Payment failed',
+        order: {
+          id: order.id,
+          reference: order.paystack_ref,
+          status: 'failed',
+          waec_type: order.waec_type,
+          quantity: order.quantity,
+          phone_number: order.phone,
+          total_amount: order.total_amount,
+          email: order.email,
+          created_at: order.created_at
+        }
       };
     }
   }
