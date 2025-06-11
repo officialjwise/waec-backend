@@ -30,9 +30,8 @@ export class AdminController {
   async listCheckers(
     @Query('waec_type') waecType: string, 
     @Query('assigned') assigned: string, 
-    @Query('pin') pin: string
   ) {
-    return this.adminService.listCheckers({ waecType, assigned: assigned === 'true', pin });
+    return this.adminService.listCheckers({ waecType, assigned: assigned === 'true'});
   }
 
   @Post('checkers')

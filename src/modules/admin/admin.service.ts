@@ -58,7 +58,7 @@ export class AdminService {
       const { data: checkers, error: checkerError } = await this.supabaseService
         .getClient()
         .from('checkers')
-        .select('id, serial, order_id, waec_type, created_at')
+        .select('id, serial, pin, order_id, waec_type, created_at')
         .eq('order_id', id);
 
       if (checkerError) {
@@ -78,10 +78,10 @@ export class AdminService {
     }
   }
 
-  async listCheckers(filters: { waecType?: string; assigned?: boolean; pin?: string }) {
+  async listCheckers(filters: { waecType?: string; assigned?: boolean; }) {
     try {
       this.logger.debug(`Listing checkers with filters: ${JSON.stringify(filters)}`);
-      let query = this.supabaseService.getClient().from('checkers').select('id, serial, pin, order_id, waec_type, created_at');
+      let query = this.supabaseService.getClient().from('checkers').select('id, serial, order_id, waec_type, created_at');
 
       if (filters.waecType) query = query.eq('waec_type', filters.waecType);
       if (filters.assigned !== undefined) {
