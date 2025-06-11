@@ -101,12 +101,20 @@ export class PaymentsService {
       throw new HttpException('SMS configuration error', HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    const content = checkers
-      .map((c) => `Serial: ${c.serial}, PIN: ${c.pin}, Type: ${c.waec_type}`)
-      .join('\n');
+    // Add title and format the message with proper structure
+    const content = `YOUR WAEC CHECKER DETAILS\n\n${
+      checkers
+        .map((c, index) => 
+          `Checker #${index+1}:\n` +
+          `Type: ${c.waec_type}\n` +
+          `Serial: ${c.serial}\n` +
+          `PIN: ${c.pin}`
+        )
+        .join('\n\n')  // Double line break between checkers
+    }`;
 
     try {
-      this.logger.debug(`Sending SMS to ${phone} with content: ${content}`);
+      this.logger.debug(`Sending SMS to ${phone}`);
 
       const response = await axios.get('https://smsc.hubtel.com/v1/messages/send', {
         params: {
