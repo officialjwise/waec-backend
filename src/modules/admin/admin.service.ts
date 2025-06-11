@@ -78,10 +78,10 @@ export class AdminService {
     }
   }
 
-  async listCheckers(filters: { waecType?: string; assigned?: boolean }) {
+  async listCheckers(filters: { waecType?: string; assigned?: boolean; pin?: string }) {
     try {
       this.logger.debug(`Listing checkers with filters: ${JSON.stringify(filters)}`);
-      let query = this.supabaseService.getClient().from('checkers').select('id, serial, order_id, waec_type, created_at');
+      let query = this.supabaseService.getClient().from('checkers').select('id, serial, pin, order_id, waec_type, created_at');
 
       if (filters.waecType) query = query.eq('waec_type', filters.waecType);
       if (filters.assigned !== undefined) {
