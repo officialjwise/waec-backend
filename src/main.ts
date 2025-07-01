@@ -4,7 +4,7 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors({
-    origin: [process.env.FRONTEND_URL, 'http://localhost:3000'],
+    origin: [process.env.FRONTEND_URL, 'https://www.youngpres.com'],
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
     credentials: true,
