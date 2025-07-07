@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './modules/auth/auth.module';
@@ -32,7 +34,9 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply((req, res, next) => {
-        console.log(`Pre-LogMiddleware: baseUrl=${req.baseUrl}, path=${req.path}, originalUrl=${req.originalUrl}`);
+        console.log(
+          `Pre-LogMiddleware: baseUrl=${req.baseUrl}, path=${req.path}, originalUrl=${req.originalUrl}`,
+        );
         next();
       }, LogMiddleware)
       .forRoutes('*');
