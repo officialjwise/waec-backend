@@ -14,7 +14,7 @@ export class OrdersService {
     private supabaseService: SupabaseService,
     private paymentsService: PaymentsService,
     private configService: ConfigService,
-  ) {}
+  ) { }
 
   async initiateOrder(dto: InitiateOrderDto) {
     const { waec_type, quantity, phone, email } = dto;
@@ -227,7 +227,7 @@ export class OrdersService {
     }
   }
 
-  // ✅ ADDED METHOD: Handle Paystack Webhook and i'm trying to push again
+  // ✅ ADDED METHOD: Handle Paystack Webhook and i'm trying to push again and pushing again
   async handlePaystackWebhook(req: any, res: any) {
     const signature = req.headers['x-paystack-signature'];
     const secret = this.configService.get<string>('PAYSTACK_SECRET_KEY');
