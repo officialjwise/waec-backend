@@ -36,6 +36,7 @@ export class PaymentsService {
           phone: order.phone,
           failure_url: this.configService.get('paystack.failureUrl'),
         },
+        channels: ['mobile_money', 'card'], // ✅ Explicitly enable MoMo
       };
 
       this.logger.debug(`Initiating Paystack payment with payload: ${JSON.stringify(payload)}`);
