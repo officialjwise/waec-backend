@@ -230,7 +230,7 @@ export class OrdersService {
   // ✅ ADDED METHOD: Handle Paystack Webhook and i'm trying to push again and pushing again
   async handlePaystackWebhook(req: any, res: any) {
     const signature = req.headers['x-paystack-signature'];
-    const secret = this.configService.get<string>('PAYSTACK_SECRET_KEY');
+    const secret = this.configService.get<string>('PAYSTACK_SECRET');
     const crypto = require('crypto');
 
     const hash = crypto.createHmac('sha512', secret).update(JSON.stringify(req.body)).digest('hex');
