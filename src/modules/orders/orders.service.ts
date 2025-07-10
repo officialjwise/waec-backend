@@ -228,6 +228,22 @@ export class OrdersService {
   }
 
   // ✅ ADDED METHOD: Handle Paystack Webhook
+  async handlePaystackWebhook(req: any, res: any) {
+    const signature = req.headers['x-paystack-signature'];
+    const secret = this.configService.get<string>('PAYSTACK_SECRET_KEY');
+    const crypto = require('crypto');
+
+    const hash = crypto.createHmac('sha512', secret).update(JSON.stringify(req.body)).digest('hex');
+    if (hash !== signature) {
+      this.logger.warn('Invalid Paystack webhook signature');
+      return res.status(400).send('Invalid signature');
+    }
+
+    const payload = req.body;
+    const result = await this.handleWebhook(payload);
+    return res.status(200).json(result);
+  }
+
   async handleWebhook(payload: any) {
     const event = payload?.event;
     const data = payload?.data;
