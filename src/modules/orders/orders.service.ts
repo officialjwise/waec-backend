@@ -4,7 +4,6 @@ import { SupabaseService } from '../../common/services/supabase.service';
 import { PaymentsService } from '../payments/payments.service';
 import { InitiateOrderDto } from '../../common/dtos/order.dto';
 import { Checker } from '../../common/interfaces/checker.interface';
-//import { v4 as uuidv4 } from 'uuid';
 const { v4: uuidv4 } = require('uuid');
 
 @Injectable()
@@ -31,7 +30,6 @@ export class OrdersService {
       throw new HttpException('Quantity must be greater than 0', HttpStatus.BAD_REQUEST);
     }
 
-    // Validate stock
     const { count, error: stockError } = await this.supabaseService
       .getClient()
       .from('checkers')
@@ -48,11 +46,8 @@ export class OrdersService {
       throw new HttpException('Insufficient checkers available', HttpStatus.BAD_REQUEST);
     }
 
-    // Generate a unique Paystack reference
     const paystack_ref = `REF-${uuidv4()}`;
-
-    // Create order
-    const total_amount = quantity * 17.5; // GHS 17.5 per checker
+    const total_amount = quantity * 17.5;
     const orderData = {
       waec_type,
       quantity,
@@ -77,11 +72,9 @@ export class OrdersService {
       throw new HttpException(`Failed to create order: ${error.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    // Initiate payment
     try {
       const paymentData = await this.paymentsService.initiatePayment(order);
 
-      // Update order with Paystack reference
       const { error: updateError } = await this.supabaseService
         .getClient()
         .from('orders')
@@ -98,7 +91,6 @@ export class OrdersService {
       return { order_id: order.id, payment_url: paymentData.authorization_url };
     } catch (error) {
       this.logger.error(`Payment initiation failed: ${error.message}`);
-      // Rollback order
       const { error: deleteError } = await this.supabaseService
         .getClient()
         .from('orders')
@@ -117,7 +109,6 @@ export class OrdersService {
     this.logger.debug(`Verifying payment for reference: ${reference}`);
 
     const verification = await this.paymentsService.verifyPayment(reference);
-
     const orderId = verification.metadata.order_id;
     const { data: order, error: orderError } = await this.supabaseService
       .getClient()
@@ -132,13 +123,11 @@ export class OrdersService {
     }
 
     if (verification.status === 'success') {
-      // Verify amount
       if (verification.amount / 100 !== order.total_amount) {
         this.logger.warn(`Amount mismatch: expected ${order.total_amount}, got ${verification.amount / 100}`);
         throw new HttpException('Amount mismatch', HttpStatus.BAD_REQUEST);
       }
 
-      // Update order status
       const { error: updateError } = await this.supabaseService
         .getClient()
         .from('orders')
@@ -150,7 +139,6 @@ export class OrdersService {
         throw new HttpException(updateError.message, HttpStatus.INTERNAL_SERVER_ERROR);
       }
 
-      // Assign checkers
       const { data: checkers, error: checkerError } = await this.supabaseService
         .getClient()
         .from('checkers')
@@ -176,10 +164,8 @@ export class OrdersService {
         throw new HttpException(assignError.message, HttpStatus.INTERNAL_SERVER_ERROR);
       }
 
-      // Send checkers via SMS
       await this.paymentsService.sendCheckersViaSms(order.phone, checkers);
 
-      // Store checkers for frontend display
       const { error: storeError } = await this.supabaseService
         .getClient()
         .from('orders')
@@ -193,7 +179,6 @@ export class OrdersService {
 
       this.logger.debug(`Payment verified successfully: ${orderId}`);
 
-      // Return response in the format expected by frontend
       return {
         status: 'success',
         message: 'Payment verified successfully',
@@ -211,7 +196,6 @@ export class OrdersService {
         }
       };
     } else {
-      // Update order status to failed
       const { error: updateError } = await this.supabaseService
         .getClient()
         .from('orders')
@@ -225,7 +209,6 @@ export class OrdersService {
 
       this.logger.debug(`Payment failed: ${orderId}`);
 
-      // Return failed response in consistent format
       return {
         status: 'failed',
         message: 'Payment failed',
@@ -242,5 +225,35 @@ export class OrdersService {
         }
       };
     }
+  }
+
+  // ✅ ADDED METHOD: Handle Paystack Webhook
+  async handleWebhook(payload: any) {
+    const event = payload?.event;
+    const data = payload?.data;
+
+    if (event === 'charge.success' && data?.status === 'success') {
+      const reference = data.reference;
+      const metadata = data.metadata;
+
+      const orderId = metadata?.order_id;
+      if (!orderId) {
+        this.logger.warn(`Webhook received without order_id. Reference: ${reference}`);
+        return { status: 'ignored', reason: 'Missing order_id in metadata' };
+      }
+
+      this.logger.log(`Webhook: Handling successful charge for Order ID ${orderId}, Ref: ${reference}`);
+
+      try {
+        const result = await this.verifyPayment(reference);
+        return { status: 'processed', result };
+      } catch (error) {
+        this.logger.error(`Webhook handling failed for Ref ${reference}: ${error.message}`);
+        throw new HttpException('Webhook processing failed', HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+    }
+
+    this.logger.warn(`Unhandled webhook event type: ${event}`);
+    return { status: 'ignored', reason: 'Unhandled event type' };
   }
 }
