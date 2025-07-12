@@ -21,7 +21,7 @@ export class OrdersService {
 
     this.logger.debug(`Initiating order: ${JSON.stringify(dto)}`);
 
-    if (!['BECE', 'WASSCE', 'NOVDEC', 'CSSPS'].includes(waec_type)) {
+    if (!['BECE', 'WASSCE', 'NOVDEC', 'CSSPS', 'CTVET'].includes(waec_type)) {
       this.logger.warn(`Invalid waec_type: ${waec_type}`);
       throw new HttpException('Invalid checker type', HttpStatus.BAD_REQUEST);
     }
@@ -47,7 +47,9 @@ export class OrdersService {
     }
 
     const paystack_ref = `REF-${uuidv4()}`;
-    const total_amount = quantity * 17.5;
+    // New pricing logic: CSSPS is ₵20.00, all others are ₵17.50
+    const pricePerChecker = waec_type === 'CSSPS' ? 20.0 : 17.5;
+    const total_amount = quantity * pricePerChecker;
     const orderData = {
       waec_type,
       quantity,

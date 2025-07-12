@@ -1,11 +1,11 @@
 export class CheckerDto {
   serial: string;
   pin: string;
-  waec_type: 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS';
+  waec_type: 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS' | 'CTVET';
 }
 
 export class StockAvailabilityDto {
-  waec_type: 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS';
+  waec_type: 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS' | 'CTVET';
   count: number;
 }
 

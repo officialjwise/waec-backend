@@ -123,7 +123,7 @@ export class AdminService {
         if (!serial || !pin || !waec_type) {
           throw new HttpException('Invalid CSV format: Missing required fields', HttpStatus.BAD_REQUEST);
         }
-        if (!['BECE', 'WASSCE', 'NOVDEC', 'CSSPS'].includes(waec_type)) {
+        if (!['BECE', 'WASSCE', 'NOVDEC', 'CSSPS', 'CTVET'].includes(waec_type)) {
           throw new HttpException(`Invalid waec_type: ${waec_type}`, HttpStatus.BAD_REQUEST);
         }
         checkers.push({ serial, pin, waec_type, created_at: new Date().toISOString() });

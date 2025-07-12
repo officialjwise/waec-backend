@@ -5,7 +5,7 @@ CREATE TABLE checkers (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   serial VARCHAR(50) UNIQUE NOT NULL,
   pin VARCHAR(50) UNIQUE NOT NULL,
-  waec_type VARCHAR(20) NOT NULL CHECK (waec_type IN ('BECE', 'WASSCE', 'NOVDEC')),
+  waec_type VARCHAR(20) NOT NULL CHECK (waec_type IN ('BECE', 'WASSCE', 'NOVDEC', 'CSSPS', 'CTVET')),
   order_id UUID,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (order_id) REFERENCES orders(id)

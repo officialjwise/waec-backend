@@ -11,7 +11,7 @@ export class CheckersController {
   @Get('availability')
   @UseGuards(OptionalJwtAuthGuard) // Use optional auth guard
   async getAvailability(
-    @Query('waec_type') waec_type?: 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS',
+    @Query('waec_type') waec_type?: 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS' | 'CTVET',
     @Query('limit') limit?: string,
     @Query('detailed') detailed: string = 'false',
     @User() user?: any,

@@ -1,5 +1,5 @@
 export class InitiateOrderDto {
-  waec_type: 'BECE' | 'WASSCE' | 'NOVDEC';
+  waec_type: 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS' | 'CTVET';
   quantity: number;
   phone: string;
   email?: string;

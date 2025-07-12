@@ -16,7 +16,7 @@ export class CheckersService {
   //     throw new HttpException('File must be a CSV', HttpStatus.BAD_REQUEST);
   //   }
 
-  //   const validWaecTypes = ['BECE', 'WASSCE', 'NOVDEC', 'CSSPS'];
+  //   const validWaecTypes = ['BECE', 'WASSCE', 'NOVDEC', 'CSSPS', 'CTVET'];
   //   const checkers: CheckerDto[] = [];
   //   let hasRequiredHeaders = false;
 
@@ -44,7 +44,7 @@ export class CheckersService {
   //     checkers.push({
   //       serial: record.serial,
   //       pin: record.pin,
-  //       waec_type: waec_type as 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS',
+  //       waec_type: waec_type as 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS' | 'CTVET',
   //     });
   //   }
 
@@ -64,7 +64,7 @@ export class CheckersService {
   //   return { message: 'Checkers uploaded successfully', count: checkers.length };
   // }
   async getAvailability(
-    waec_type?: 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS',
+    waec_type?: 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS' | 'CTVET',
     limit: number = 10,
     detailed: boolean = false,
     isAuthenticated: boolean = false,
@@ -81,7 +81,7 @@ export class CheckersService {
       .is('order_id', null);
   
     if (waec_type) {
-      if (!['BECE', 'WASSCE', 'NOVDEC', 'CSSPS'].includes(waec_type)) {
+      if (!['BECE', 'WASSCE', 'NOVDEC', 'CSSPS', 'CTVET'].includes(waec_type)) {
         throw new HttpException('Invalid checker type', HttpStatus.BAD_REQUEST);
       }
       query = query.eq('waec_type', waec_type);
@@ -114,7 +114,7 @@ export class CheckersService {
       });
   
       responseData = Array.from(summaryMap.entries()).map(([waec_type, count]) => ({
-        waec_type: waec_type as 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS',
+        waec_type: waec_type as 'BECE' | 'WASSCE' | 'NOVDEC' | 'CSSPS' | 'CTVET',
         count,
       }));
   
@@ -133,7 +133,7 @@ export class CheckersService {
   }
 
   async getSummary() {
-    const validWaecTypes = ['BECE', 'WASSCE', 'NOVDEC', 'CSSPS'];
+    const validWaecTypes = ['BECE', 'WASSCE', 'NOVDEC', 'CSSPS', 'CTVET'];
     const summary: Array<{ waec_type: string; count: number | null }> = [];
 
     for (const type of validWaecTypes) {
