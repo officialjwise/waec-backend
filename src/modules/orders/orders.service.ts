@@ -166,12 +166,26 @@ export class OrdersService {
         throw new HttpException(assignError.message, HttpStatus.INTERNAL_SERVER_ERROR);
       }
 
+      // Send checkers via SMS
       await this.paymentsService.sendCheckersViaSms(order.phone, checkers);
+
+      // If email is provided, send checkers via email
+      if (order.email) {
+        await this.paymentsService.sendCheckersViaEmail(order.email, checkers);
+      }
+
+      // Prepare checker data for storage, ensuring only essential fields are stored
+      const checkersToStore = checkers.map(c => ({
+        id: c.id,
+        serial: c.serial,
+        pin: c.pin,
+        waec_type: c.waec_type
+      }));
 
       const { error: storeError } = await this.supabaseService
         .getClient()
         .from('orders')
-        .update({ checkers })
+        .update({ checkers: checkersToStore })
         .eq('id', orderId);
 
       if (storeError) {

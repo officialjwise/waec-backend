@@ -11,7 +11,7 @@ export class PaymentsService {
   constructor(
     private configService: ConfigService,
     private supabaseService: SupabaseService,
-  ) {}
+  ) { }
 
   async initiatePayment(order: any) {
     const paystackSecret = this.configService.get('paystack.secret');
@@ -92,6 +92,29 @@ export class PaymentsService {
     }
   }
 
+  async sendCheckersViaEmail(email: string, checkers: Checker[]) {
+    // Create HTML content for the email
+    const htmlContent = `
+      <h2>YOUR WAEC CHECKER DETAILS</h2>
+      ${checkers.map((c, index) => `
+        <div style="margin-bottom: 20px;">
+          <h3>Checker #${index + 1}</h3>
+          <p><strong>Type:</strong> ${c.waec_type}</p>
+          <p><strong>Serial:</strong> ${c.serial}</p>
+          <p><strong>PIN:</strong> ${c.pin}</p>
+        </div>
+      `).join('')}
+    `;
+
+    // Send email using your email service (implement according to your email provider)
+    // This is just a placeholder - you'll need to implement the actual email sending logic
+    // For now, just log that we would have sent an email
+    this.logger.log(`[EMAIL NOT IMPLEMENTED YET] Would send checkers to ${email}`);
+    this.logger.log(`[EMAIL CONTENT PREVIEW] ${htmlContent}`);
+    // Don't throw an error, just return successfully
+    return;
+  }
+
   async sendCheckersViaSms(phone: string, checkers: Checker[]) {
     const clientId = this.configService.get('hubtel.clientId');
     const clientSecret = this.configService.get('hubtel.clientSecret');
@@ -103,16 +126,15 @@ export class PaymentsService {
     }
 
     // Add title and format the message with proper structure
-    const content = `YOUR WAEC CHECKER DETAILS\n\n${
-      checkers
-        .map((c, index) => 
-          `Checker #${index+1}:\n` +
-          `Type: ${c.waec_type}\n` +
-          `Serial: ${c.serial}\n` +
-          `PIN: ${c.pin}`
-        )
-        .join('\n\n')  // Double line break between checkers
-    }`;
+    const content = `YOUR WAEC CHECKER DETAILS\n\n${checkers
+      .map((c, index) =>
+        `Checker #${index + 1}:\n` +
+        `Type: ${c.waec_type}\n` +
+        `Serial: ${c.serial}\n` +
+        `PIN: ${c.pin}`
+      )
+      .join('\n\n')  // Double line break between checkers
+      }`;
 
     try {
       this.logger.debug(`Sending SMS to ${phone}`);
