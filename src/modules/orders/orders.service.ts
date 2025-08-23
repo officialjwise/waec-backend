@@ -112,6 +112,7 @@ export class OrdersService {
 
     const verification = await this.paymentsService.verifyPayment(reference);
     const orderId = verification.metadata.order_id;
+    this.logger.debug(`Payment verification - OrderID: ${orderId}, Status: ${verification.status}`);
     const { data: order, error: orderError } = await this.supabaseService
       .getClient()
       .from('orders')
@@ -128,6 +129,27 @@ export class OrdersService {
       if (verification.amount / 100 !== order.total_amount) {
         this.logger.warn(`Amount mismatch: expected ${order.total_amount}, got ${verification.amount / 100}`);
         throw new HttpException('Amount mismatch', HttpStatus.BAD_REQUEST);
+      }
+
+      // Check if order is already marked as paid to prevent double processing
+      if (order.status === 'paid') {
+        this.logger.debug(`Order ${orderId} is already paid and processed. Skipping checker assignment.`);
+        return {
+          status: 'success',
+          message: 'Payment already verified',
+          order: {
+            id: order.id,
+            reference: order.paystack_ref,
+            status: 'paid',
+            waec_type: order.waec_type,
+            quantity: order.quantity,
+            phone_number: order.phone,
+            total_amount: order.total_amount,
+            email: order.email,
+            created_at: order.created_at,
+            checkers: order.checkers
+          }
+        };
       }
 
       const { error: updateError } = await this.supabaseService
