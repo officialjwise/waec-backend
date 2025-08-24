@@ -215,9 +215,9 @@ export class OtpService {
           throw new HttpException('Failed to fetch orders', HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
-        // Flatten all checkers from all orders
+        // Flatten all checkers from all orders (only include orders with checkers)
         const allCheckers = orders.reduce((acc, order) => {
-          if (order.checkers && Array.isArray(order.checkers)) {
+          if (order.checkers && Array.isArray(order.checkers) && order.checkers.length > 0) {
             return [
               ...acc,
               ...order.checkers.map((checker) => ({
@@ -229,6 +229,14 @@ export class OtpService {
           }
           return acc;
         }, []);
+
+        if (allCheckers.length === 0) {
+          this.logger.debug(`No paid checkers found for phone: ${otpSession.phone}`);
+          return {
+            message: 'No checker found for this number to be retrieved',
+            statusCode: HttpStatus.NOT_FOUND,
+          };
+        }
 
         this.logger.debug(`OTP verified successfully: ${requestId}, returning ${allCheckers.length} checkers`);
 
