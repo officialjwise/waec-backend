@@ -47,8 +47,8 @@ export class OrdersService {
     }
 
     const paystack_ref = `REF-${uuidv4()}`;
-    // New pricing logic: CSSPS is ₵20.00, all others are ₵17.50
-    const pricePerChecker = waec_type === 'CSSPS' ? 20.0 : 17.5;
+    // New pricing logic: CSSPS is ₵20.00, CTVET is ₵0.50, all others are ₵17.50
+    const pricePerChecker = waec_type === 'CSSPS' ? 20.0 : waec_type === 'CTVET' ? 0.5 : 17.5;
     const total_amount = quantity * pricePerChecker;
     const orderData = {
       waec_type,
