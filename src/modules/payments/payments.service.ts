@@ -28,7 +28,7 @@ export class PaymentsService {
 
     try {
       const payload = {
-        email: order.email || 'user@example.com',
+        email: order.email && order.email.trim() !== '' ? order.email : 'appiahyoung2002@gmail.com',
         amount: order.total_amount * 100, // Convert to kobo
         callback_url: `${callbackUrl}?order_id=${order.id}&reference=${order.paystack_ref}`,
         metadata: {
