@@ -6,7 +6,7 @@ async function bootstrap() {
   app.enableCors({
     origin: '*',
     // origin: [process.env.FRONTEND_URL, 'https://www.youngpres.com'],
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
     credentials: true,
   });
