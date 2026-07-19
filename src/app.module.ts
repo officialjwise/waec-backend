@@ -6,6 +6,7 @@ import { OrdersModule } from './modules/orders/orders.module';
 import { OtpModule } from './modules/otp/otp.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { ResultCheckModule } from './modules/result-check/result-check.module';
 import { CommonModule } from './common/common.module';
 import { LogMiddleware } from './middleware/log.middleware';
 import supabaseConfig from './config/supabase.config';
@@ -26,6 +27,7 @@ import hubtelConfig from './config/hubtel.config';
     OtpModule,
     PaymentsModule,
     AdminModule,
+    ResultCheckModule,
   ],
 })
 export class AppModule implements NestModule {

@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Query, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Get, Param, Post, Put, Body, Query, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -59,5 +59,42 @@ export class AdminController {
   @Get('logs')
   async listLogs(@Query('action') action: string, @Query('admin_id') adminId: string) {
     return this.adminService.listLogs({ action, adminId });
+  }
+
+  @Get('result-check-orders')
+  async listResultCheckOrders(
+    @Query('status') status: string,
+    @Query('phone') phone: string,
+    @Query('email') email: string,
+    @Query('result_type') result_type: string,
+    @Query('start_date') startDate: string,
+    @Query('end_date') endDate: string,
+  ) {
+    return this.adminService.listResultCheckOrders({ status, phone, email, result_type, startDate, endDate });
+  }
+
+  @Get('result-check-orders/:id')
+  async getResultCheckOrderDetails(@Param('id') id: string) {
+    return this.adminService.getResultCheckOrderDetails(id);
+  }
+
+  @Get('result-release-years')
+  async listReleaseYears(@Query('result_type') result_type: string) {
+    return this.adminService.listReleaseYears({ result_type });
+  }
+
+  @Post('result-release-years')
+  async upsertReleaseYear(@Body() body: { result_type: string; year: number; is_released: boolean }) {
+    return this.adminService.upsertReleaseYear(body);
+  }
+
+  @Get('result-release-years/:id/toggle')
+  async toggleReleaseYearGet(@Param('id') id: string) {
+    return this.adminService.toggleReleaseYear(id);
+  }
+
+  @Put('result-release-years/:id')
+  async toggleReleaseYear(@Param('id') id: string) {
+    return this.adminService.toggleReleaseYear(id);
   }
 }

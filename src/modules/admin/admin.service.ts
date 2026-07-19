@@ -307,4 +307,191 @@ export class AdminService {
       throw new HttpException('Failed to list OTP requests', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
+
+  async listResultCheckOrders(filters: { status?: string; phone?: string; email?: string; result_type?: string; startDate?: string; endDate?: string }) {
+    try {
+      this.logger.debug(`Listing result check orders with filters: ${JSON.stringify(filters)}`);
+      let query = this.supabaseService.getClient().from('result_check_orders').select('*');
+
+      if (filters.status) query = query.eq('status', filters.status);
+      if (filters.phone) query = query.eq('phone', filters.phone.replace(/[+-\s]/g, ''));
+      if (filters.email) query = query.eq('email', filters.email);
+      if (filters.result_type) query = query.eq('result_type', filters.result_type);
+      if (filters.startDate) query = query.gte('created_at', filters.startDate);
+      if (filters.endDate) query = query.lte('created_at', filters.endDate);
+
+      const { data, error } = await query;
+
+      if (error) {
+        this.logger.error(`Error listing result check orders: ${error.message}`);
+        throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Result check orders retrieved successfully',
+        count: data.length,
+        data: data,
+      };
+    } catch (error) {
+      this.logger.error(`List result check orders error: ${error.message}`);
+      throw new HttpException('Failed to list result check orders', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async getResultCheckOrderDetails(id: string) {
+    try {
+      this.logger.debug(`Fetching result check order details for ID: ${id}`);
+      const { data, error } = await this.supabaseService
+        .getClient()
+        .from('result_check_orders')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error || !data) {
+        throw new HttpException('Result check order not found', HttpStatus.NOT_FOUND);
+      }
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Result check order details retrieved successfully',
+        data: data,
+      };
+    } catch (error) {
+      this.logger.error(`Get result check order details error: ${error.message}`);
+      throw error instanceof HttpException ? error : new HttpException('Failed to get result check order details', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async listReleaseYears(filters: { result_type?: string }) {
+    try {
+      this.logger.debug(`Listing release years with filters: ${JSON.stringify(filters)}`);
+      let query = this.supabaseService.getClient().from('result_release_years').select('*').order('year', { ascending: false });
+
+      if (filters.result_type) query = query.eq('result_type', filters.result_type);
+
+      const { data, error } = await query;
+
+      if (error) {
+        this.logger.error(`Error listing release years: ${error.message}`);
+        throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Release years retrieved successfully',
+        count: data.length,
+        data: data,
+      };
+    } catch (error) {
+      this.logger.error(`List release years error: ${error.message}`);
+      throw new HttpException('Failed to list release years', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async upsertReleaseYear(data: { result_type: string; year: number; is_released: boolean }) {
+    try {
+      this.logger.debug(`Upserting release year: ${JSON.stringify(data)}`);
+      
+      const { data: existing, error: existingError } = await this.supabaseService
+        .getClient()
+        .from('result_release_years')
+        .select('*')
+        .eq('result_type', data.result_type)
+        .eq('year', data.year)
+        .single();
+
+      if (existing) {
+        const updateData: any = { is_released: data.is_released };
+        if (data.is_released) {
+          updateData.released_at = new Date().toISOString();
+        }
+
+        const { data: updated, error } = await this.supabaseService
+          .getClient()
+          .from('result_release_years')
+          .update(updateData)
+          .eq('id', existing.id)
+          .select()
+          .single();
+
+        if (error) throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+
+        return {
+          statusCode: HttpStatus.CREATED,
+          message: 'Release year updated successfully',
+          data: updated,
+        };
+      } else {
+        const insertData: any = {
+          result_type: data.result_type,
+          year: data.year,
+          is_released: data.is_released,
+        };
+        if (data.is_released) {
+          insertData.released_at = new Date().toISOString();
+        }
+
+        const { data: inserted, error } = await this.supabaseService
+          .getClient()
+          .from('result_release_years')
+          .insert([insertData])
+          .select()
+          .single();
+
+        if (error) throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+
+        return {
+          statusCode: HttpStatus.CREATED,
+          message: 'Release year created successfully',
+          data: inserted,
+        };
+      }
+    } catch (error) {
+      this.logger.error(`Upsert release year error: ${error.message}`);
+      throw new HttpException('Failed to upsert release year', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async toggleReleaseYear(id: string) {
+    try {
+      this.logger.debug(`Toggling release year for ID: ${id}`);
+      const { data: existing, error: existingError } = await this.supabaseService
+        .getClient()
+        .from('result_release_years')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (existingError || !existing) {
+        throw new HttpException('Release year not found', HttpStatus.NOT_FOUND);
+      }
+
+      const newIsReleased = !existing.is_released;
+      const updateData: any = { is_released: newIsReleased };
+      if (newIsReleased) {
+        updateData.released_at = new Date().toISOString();
+      }
+
+      const { data: updated, error } = await this.supabaseService
+        .getClient()
+        .from('result_release_years')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Release year toggled successfully',
+        data: updated,
+      };
+    } catch (error) {
+      this.logger.error(`Toggle release year error: ${error.message}`);
+      throw error instanceof HttpException ? error : new HttpException('Failed to toggle release year', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
 }
