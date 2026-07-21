@@ -41,10 +41,16 @@ export class ResultCheckService {
 
   async initiateOrder(dto: InitiateResultCheckDto) {
     try {
-      this.logger.debug(`Initiating result check order for: ${dto.index_number}`);
+      this.logger.debug(`Initiating result check order: ${JSON.stringify(dto)}`);
+
+      if (!dto) {
+        throw new HttpException('Request body is missing', HttpStatus.BAD_REQUEST);
+      }
+
+      this.logger.debug(`Result check values: type=${dto.result_type}, year=${dto.year} (type: ${typeof dto.year}), index=${dto.index_number}`);
 
       if (!['BECE', 'WASSCE', 'WASSCE-NOVDEC'].includes(dto.result_type)) {
-        throw new HttpException('Invalid result_type', HttpStatus.BAD_REQUEST);
+        throw new HttpException(`Invalid result_type: ${dto.result_type}`, HttpStatus.BAD_REQUEST);
       }
 
       if (!/^\d{10}$/.test(dto.index_number)) {
