@@ -498,7 +498,7 @@ export class AdminService {
 
       // Send SMS to customer
       try {
-        await this.paymentsService.sendCheckersViaSms(order.phone, [checker]);
+        await this.paymentsService.sendCheckersViaSms(order.phone, [checker], true);
       } catch (smsError) {
         this.logger.error(`Failed to send SMS to ${order.phone}: ${smsError.message}`);
       }

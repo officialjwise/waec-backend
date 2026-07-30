@@ -143,7 +143,7 @@ export class PaymentsService {
     return;
   }
 
-  async sendCheckersViaSms(phone: string, checkers: Checker[]) {
+  async sendCheckersViaSms(phone: string, checkers: Checker[], isResultCheck: boolean = false) {
     const clientId = this.configService.get('hubtel.clientId');
     const clientSecret = this.configService.get('hubtel.clientSecret');
     const senderId = this.configService.get('hubtel.senderId');
@@ -153,20 +153,31 @@ export class PaymentsService {
       throw new HttpException('SMS configuration error', HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    // Add title and format the message with proper structure
-    const content = `YOUR WAEC CHECKER DETAILS\n\n${checkers
-      .map((c, index) => {
-        const portalUrl = this.getPortalUrl(c.waec_type);
-        const actionText = (c.waec_type || '').toUpperCase() === 'CSSPS' ? 'placement' : 'results';
-        return (
+    let content = '';
+    if (isResultCheck) {
+      content = `YOUR RESULT CHECK ORDER DETAILS\n\n${checkers
+        .map((c, index) =>
           `Checker #${index + 1}:\n` +
           `Type: ${c.waec_type}\n` +
           `Serial: ${c.serial}\n` +
-          `PIN: ${c.pin}\n` +
-          `Visit ${portalUrl} to check your ${actionText}`
-        );
-      })
-      .join('\n\n')}`;
+          `PIN: ${c.pin}`
+        )
+        .join('\n\n')}\n\nYour results will be sent to you via the whatsapp number provided, kindly contact support after 5mins if you don't receive your results on 0557538158`;
+    } else {
+      content = `YOUR WAEC CHECKER DETAILS\n\n${checkers
+        .map((c, index) => {
+          const portalUrl = this.getPortalUrl(c.waec_type);
+          const actionText = (c.waec_type || '').toUpperCase() === 'CSSPS' ? 'placement' : 'results';
+          return (
+            `Checker #${index + 1}:\n` +
+            `Type: ${c.waec_type}\n` +
+            `Serial: ${c.serial}\n` +
+            `PIN: ${c.pin}\n` +
+            `Visit ${portalUrl} to check your ${actionText}`
+          );
+        })
+        .join('\n\n')}`;
+    }
 
     try {
       this.logger.debug(`Sending SMS to ${phone}`);

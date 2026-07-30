@@ -261,7 +261,7 @@ export class ResultCheckService {
           throw new HttpException('Failed to update order status', HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
-        await this.paymentsService.sendCheckersViaSms(order.phone, [checker]);
+        await this.paymentsService.sendCheckersViaSms(order.phone, [checker], true);
 
         if (order.email) {
           await this.paymentsService.sendCheckersViaEmail(order.email, [checker]);
