@@ -116,13 +116,14 @@ export class PaymentsService {
       <h2>YOUR WAEC CHECKER DETAILS</h2>
       ${checkers.map((c, index) => {
         const portalUrl = this.getPortalUrl(c.waec_type);
+        const actionText = (c.waec_type || '').toUpperCase() === 'CSSPS' ? 'placement' : 'results';
         return `
         <div style="margin-bottom: 20px;">
           <h3>Checker #${index + 1}</h3>
           <p><strong>Type:</strong> ${c.waec_type}</p>
           <p><strong>Serial:</strong> ${c.serial}</p>
           <p><strong>PIN:</strong> ${c.pin}</p>
-          <p><strong>Check Portal:</strong> <a href="${portalUrl}">${portalUrl}</a></p>
+          <p>Visit <a href="${portalUrl}">${portalUrl}</a> to check your ${actionText}</p>
         </div>
       `;
       }).join('')}
@@ -151,12 +152,13 @@ export class PaymentsService {
     const content = `YOUR WAEC CHECKER DETAILS\n\n${checkers
       .map((c, index) => {
         const portalUrl = this.getPortalUrl(c.waec_type);
+        const actionText = (c.waec_type || '').toUpperCase() === 'CSSPS' ? 'placement' : 'results';
         return (
           `Checker #${index + 1}:\n` +
           `Type: ${c.waec_type}\n` +
           `Serial: ${c.serial}\n` +
           `PIN: ${c.pin}\n` +
-          `Check Portal: ${portalUrl}`
+          `Visit ${portalUrl} to check your ${actionText}`
         );
       })
       .join('\n\n')}`;
