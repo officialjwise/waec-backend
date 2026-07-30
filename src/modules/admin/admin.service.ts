@@ -15,12 +15,14 @@ export class AdminService {
     private paymentsService: PaymentsService,
   ) {}
 
-  async listOrders(filters: { status?: string; phone?: string; email?: string; waecType?: string; startDate?: string; endDate?: string }) {
+  async listOrders(filters: { status?: string; phone?: string; email?: string; waecType?: string; unassigned?: boolean; startDate?: string; endDate?: string }) {
     try {
       this.logger.debug(`Listing orders with filters: ${JSON.stringify(filters)}`);
-      let query = this.supabaseService.getClient().from('orders').select('id, phone, email, waec_type, quantity, status, created_at, paystack_ref');
+      let query = this.supabaseService.getClient().from('orders').select('id, phone, email, waec_type, quantity, status, created_at, paystack_ref, checkers');
 
-      if (filters.status) query = query.eq('status', filters.status);
+      if (filters.unassigned || filters.status === 'unassigned') {
+        query = query.eq('status', 'paid').is('checkers', null);
+      } else if (filters.status) query = query.eq('status', filters.status);
       if (filters.phone) query = query.eq('phone', filters.phone.replace(/[+-\s]/g, ''));
       if (filters.email) query = query.eq('email', filters.email);
       if (filters.waecType) query = query.eq('waec_type', filters.waecType);
@@ -518,6 +520,137 @@ export class AdminService {
     } catch (error) {
       this.logger.error(`Assign checker to result check order error: ${error.message}`);
       throw error instanceof HttpException ? error : new HttpException('Failed to assign checker', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async assignCheckersToOrder(id: string, dto?: { force?: boolean }) {
+    try {
+      this.logger.debug(`Assigning checkers for main order ID: ${id}`);
+      const { data: order, error: orderError } = await this.supabaseService
+        .getClient()
+        .from('orders')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (orderError || !order) {
+        throw new HttpException('Order not found', HttpStatus.NOT_FOUND);
+      }
+
+      // Verify payment with Paystack if order is not marked as paid
+      if (order.status !== 'paid' && !dto?.force) {
+        if (!order.paystack_ref) {
+          throw new HttpException('Cannot assign checkers: No payment reference found for this order', HttpStatus.BAD_REQUEST);
+        }
+
+        this.logger.debug(`Confirming payment with Paystack for reference: ${order.paystack_ref}`);
+        try {
+          const verification = await this.paymentsService.verifyPayment(order.paystack_ref);
+          if (verification?.status !== 'success') {
+            throw new HttpException(`Cannot assign checkers: Payment has not been received/confirmed by Paystack (Paystack status: ${verification?.status || 'unpaid'})`, HttpStatus.BAD_REQUEST);
+          }
+          const amountPaid = verification.amount / 100;
+          if (amountPaid !== Number(order.total_amount)) {
+            throw new HttpException(`Cannot assign checkers: Payment amount mismatch. Expected ₵${order.total_amount}, paid ₵${amountPaid}`, HttpStatus.BAD_REQUEST);
+          }
+        } catch (paystackErr: any) {
+          this.logger.error(`Paystack verification failed for order ${order.id}: ${paystackErr.message}`);
+          throw paystackErr instanceof HttpException
+            ? paystackErr
+            : new HttpException(`Cannot assign checkers: ${paystackErr.response?.data?.message || paystackErr.message || 'Payment not confirmed by Paystack'}`, HttpStatus.BAD_REQUEST);
+        }
+      }
+
+      const existingCheckers: Checker[] = Array.isArray(order.checkers) ? order.checkers : [];
+      const neededCount = order.quantity - existingCheckers.length;
+
+      if (neededCount <= 0) {
+        return {
+          statusCode: HttpStatus.OK,
+          message: 'All checkers are already assigned to this order',
+          data: order,
+        };
+      }
+
+      // Fetch available checkers from inventory
+      const { data: checkers, error: stockError } = await this.supabaseService
+        .getClient()
+        .from('checkers')
+        .select('id, serial, pin, waec_type, created_at')
+        .eq('waec_type', order.waec_type)
+        .is('order_id', null)
+        .limit(neededCount);
+
+      if (stockError) {
+        throw new HttpException(`Stock error: ${stockError.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      if (!checkers || checkers.length === 0) {
+        throw new HttpException(`No unassigned checkers available in inventory for ${order.waec_type}`, HttpStatus.BAD_REQUEST);
+      }
+
+      if (checkers.length < neededCount) {
+        throw new HttpException(`Insufficient checkers available in inventory for ${order.waec_type}. Needed: ${neededCount}, Available: ${checkers.length}`, HttpStatus.BAD_REQUEST);
+      }
+
+      const checkerIds = checkers.map((c: Checker) => c.id);
+      const { error: assignError } = await this.supabaseService
+        .getClient()
+        .from('checkers')
+        .update({ order_id: order.id })
+        .in('id', checkerIds);
+
+      if (assignError) {
+        throw new HttpException(`Failed to assign checkers: ${assignError.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      // Dispatch SMS & Email for newly assigned checkers
+      try {
+        await this.paymentsService.sendCheckersViaSms(order.phone, checkers);
+      } catch (smsError) {
+        this.logger.error(`Failed to send SMS to ${order.phone}: ${smsError.message}`);
+      }
+
+      if (order.email) {
+        try {
+          await this.paymentsService.sendCheckersViaEmail(order.email, checkers);
+        } catch (emailError) {
+          this.logger.error(`Failed to send email to ${order.email}: ${emailError.message}`);
+        }
+      }
+
+      const newCheckersToStore = checkers.map((c: Checker) => ({
+        id: c.id,
+        serial: c.serial,
+        pin: c.pin,
+        waec_type: c.waec_type,
+      }));
+
+      const allCheckersToStore = [...existingCheckers, ...newCheckersToStore];
+
+      const { data: updatedOrder, error: updateOrderError } = await this.supabaseService
+        .getClient()
+        .from('orders')
+        .update({
+          status: 'paid',
+          checkers: allCheckersToStore,
+        })
+        .eq('id', order.id)
+        .select()
+        .single();
+
+      if (updateOrderError) {
+        throw new HttpException('Failed to update order with assigned checkers', HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Checkers assigned successfully and SMS dispatched',
+        data: updatedOrder,
+      };
+    } catch (error) {
+      this.logger.error(`Assign checkers to order error: ${error.message}`);
+      throw error instanceof HttpException ? error : new HttpException('Failed to assign checkers', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 

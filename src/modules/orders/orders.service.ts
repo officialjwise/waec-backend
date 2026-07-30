@@ -138,8 +138,8 @@ export class OrdersService {
         throw new HttpException('Amount mismatch', HttpStatus.BAD_REQUEST);
       }
 
-      // Check if order is already marked as paid to prevent double processing
-      if (order.status === 'paid') {
+      // Check if order is already marked as paid AND has checkers assigned
+      if (order.status === 'paid' && order.checkers && order.checkers.length >= order.quantity) {
         this.logger.debug(`Order ${orderId} is already paid and processed. Skipping checker assignment.`);
         return {
           status: 'success',

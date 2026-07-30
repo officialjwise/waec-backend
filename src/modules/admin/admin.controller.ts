@@ -15,15 +15,32 @@ export class AdminController {
     @Query('phone') phone: string,
     @Query('email') email: string,
     @Query('waec_type') waecType: string,
+    @Query('unassigned') unassigned: string,
     @Query('start_date') startDate: string,
     @Query('end_date') endDate: string,
   ) {
-    return this.adminService.listOrders({ status, phone, email, waecType, startDate, endDate });
+    return this.adminService.listOrders({
+      status,
+      phone,
+      email,
+      waecType,
+      unassigned: unassigned === 'true',
+      startDate,
+      endDate,
+    });
   }
 
   @Get('orders/:id')
   async getOrderDetails(@Param('id') id: string) {
     return this.adminService.getOrderDetails(id);
+  }
+
+  @Post('orders/:id/assign-checkers')
+  async assignCheckersToOrder(
+    @Param('id') id: string,
+    @Body() body: { force?: boolean },
+  ) {
+    return this.adminService.assignCheckersToOrder(id, body);
   }
 
   @Get('checkers')
