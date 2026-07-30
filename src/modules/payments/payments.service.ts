@@ -95,18 +95,37 @@ export class PaymentsService {
     }
   }
 
+  private readonly resultCheckingUrls: Record<string, string> = {
+    BECE: 'https://eresults.waecgh.org',
+    WASSCE: 'https://ghana.waecdirect.org',
+    NOVDEC: 'https://ghana.waecdirect.org',
+    'WASSCE-NOVDEC': 'https://ghana.waecdirect.org',
+    CSSPS: 'https://cssps.gov.gh',
+    CTVET: 'https://eresults.waecgh.org',
+  };
+
+  private getPortalUrl(waecType: string): string {
+    if (!waecType) return 'https://ghana.waecdirect.org';
+    const key = waecType.toUpperCase();
+    return this.resultCheckingUrls[key] || this.resultCheckingUrls[waecType] || 'https://ghana.waecdirect.org';
+  }
+
   async sendCheckersViaEmail(email: string, checkers: Checker[]) {
     // Create HTML content for the email
     const htmlContent = `
       <h2>YOUR WAEC CHECKER DETAILS</h2>
-      ${checkers.map((c, index) => `
+      ${checkers.map((c, index) => {
+        const portalUrl = this.getPortalUrl(c.waec_type);
+        return `
         <div style="margin-bottom: 20px;">
           <h3>Checker #${index + 1}</h3>
           <p><strong>Type:</strong> ${c.waec_type}</p>
           <p><strong>Serial:</strong> ${c.serial}</p>
           <p><strong>PIN:</strong> ${c.pin}</p>
+          <p><strong>Check Portal:</strong> <a href="${portalUrl}">${portalUrl}</a></p>
         </div>
-      `).join('')}
+      `;
+      }).join('')}
     `;
 
     // Send email using your email service (implement according to your email provider)
@@ -130,14 +149,17 @@ export class PaymentsService {
 
     // Add title and format the message with proper structure
     const content = `YOUR WAEC CHECKER DETAILS\n\n${checkers
-      .map((c, index) =>
-        `Checker #${index + 1}:\n` +
-        `Type: ${c.waec_type}\n` +
-        `Serial: ${c.serial}\n` +
-        `PIN: ${c.pin}`
-      )
-      .join('\n\n')  // Double line break between checkers
-      }`;
+      .map((c, index) => {
+        const portalUrl = this.getPortalUrl(c.waec_type);
+        return (
+          `Checker #${index + 1}:\n` +
+          `Type: ${c.waec_type}\n` +
+          `Serial: ${c.serial}\n` +
+          `PIN: ${c.pin}\n` +
+          `Check Portal: ${portalUrl}`
+        );
+      })
+      .join('\n\n')}`;
 
     try {
       this.logger.debug(`Sending SMS to ${phone}`);
