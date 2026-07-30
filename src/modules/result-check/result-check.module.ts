@@ -9,5 +9,6 @@ import { PaymentsModule } from '../payments/payments.module';
   imports: [ConfigModule, PaymentsModule],
   controllers: [ResultCheckController],
   providers: [ResultCheckService, SupabaseService],
+  exports: [ResultCheckService],
 })
 export class ResultCheckModule {}

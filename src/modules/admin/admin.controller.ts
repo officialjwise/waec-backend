@@ -67,15 +67,32 @@ export class AdminController {
     @Query('phone') phone: string,
     @Query('email') email: string,
     @Query('result_type') result_type: string,
+    @Query('unassigned') unassigned: string,
     @Query('start_date') startDate: string,
     @Query('end_date') endDate: string,
   ) {
-    return this.adminService.listResultCheckOrders({ status, phone, email, result_type, startDate, endDate });
+    return this.adminService.listResultCheckOrders({
+      status,
+      phone,
+      email,
+      result_type,
+      unassigned: unassigned === 'true',
+      startDate,
+      endDate,
+    });
   }
 
   @Get('result-check-orders/:id')
   async getResultCheckOrderDetails(@Param('id') id: string) {
     return this.adminService.getResultCheckOrderDetails(id);
+  }
+
+  @Post('result-check-orders/:id/assign-checker')
+  async assignCheckerToResultCheckOrder(
+    @Param('id') id: string,
+    @Body() body: { checker_id?: string; serial?: string; pin?: string },
+  ) {
+    return this.adminService.assignCheckerToResultCheckOrder(id, body);
   }
 
   @Get('result-release-years')

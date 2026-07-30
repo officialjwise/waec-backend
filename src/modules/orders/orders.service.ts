@@ -4,6 +4,7 @@ import { SupabaseService } from '../../common/services/supabase.service';
 import { PaymentsService } from '../payments/payments.service';
 import { InitiateOrderDto } from '../../common/dtos/order.dto';
 import { Checker } from '../../common/interfaces/checker.interface';
+import { ResultCheckService } from '../result-check/result-check.service';
 const { v4: uuidv4 } = require('uuid');
 
 @Injectable()
@@ -14,6 +15,7 @@ export class OrdersService {
     private supabaseService: SupabaseService,
     private paymentsService: PaymentsService,
     private configService: ConfigService,
+    private resultCheckService: ResultCheckService,
   ) { }
 
   async initiateOrder(dto: InitiateOrderDto) {
@@ -121,8 +123,13 @@ export class OrdersService {
       .single();
 
     if (orderError || !order) {
-      this.logger.error(`Order not found: ${orderId}`);
-      throw new HttpException('Order not found', HttpStatus.NOT_FOUND);
+      this.logger.debug(`Order ${orderId} not found in main orders table. Attempting fallback to result_check_orders...`);
+      try {
+        return await this.resultCheckService.verifyPayment(reference);
+      } catch (rcError) {
+        this.logger.error(`Order not found in orders or result_check_orders: ${orderId}`);
+        throw rcError instanceof HttpException ? rcError : new HttpException('Order not found', HttpStatus.NOT_FOUND);
+      }
     }
 
     if (verification.status === 'success') {

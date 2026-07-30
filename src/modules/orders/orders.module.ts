@@ -5,8 +5,10 @@ import { OrdersService } from './orders.service';
 import { SupabaseService } from '../../common/services/supabase.service';
 import { PaymentsModule } from '../payments/payments.module';
 
+import { ResultCheckModule } from '../result-check/result-check.module';
+
 @Module({
-  imports: [ConfigModule, PaymentsModule],
+  imports: [ConfigModule, PaymentsModule, ResultCheckModule],
   controllers: [OrdersController],
   providers: [OrdersService, SupabaseService],
 })

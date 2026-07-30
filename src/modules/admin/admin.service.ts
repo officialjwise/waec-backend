@@ -1,5 +1,7 @@
 import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/services/supabase.service';
+import { PaymentsService } from '../payments/payments.service';
+import { Checker } from '../../common/interfaces/checker.interface';
 import { parse } from 'csv-parse';
 import { Readable } from 'stream';
 
@@ -8,7 +10,10 @@ export class AdminService {
   private readonly logger = new Logger(AdminService.name);
   private readonly LOW_STOCK_THRESHOLD = 10;
 
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(
+    private supabaseService: SupabaseService,
+    private paymentsService: PaymentsService,
+  ) {}
 
   async listOrders(filters: { status?: string; phone?: string; email?: string; waecType?: string; startDate?: string; endDate?: string }) {
     try {
@@ -308,12 +313,16 @@ export class AdminService {
     }
   }
 
-  async listResultCheckOrders(filters: { status?: string; phone?: string; email?: string; result_type?: string; startDate?: string; endDate?: string }) {
+  async listResultCheckOrders(filters: { status?: string; phone?: string; email?: string; result_type?: string; unassigned?: boolean; startDate?: string; endDate?: string }) {
     try {
       this.logger.debug(`Listing result check orders with filters: ${JSON.stringify(filters)}`);
       let query = this.supabaseService.getClient().from('result_check_orders').select('*');
 
-      if (filters.status) query = query.eq('status', filters.status);
+      if (filters.unassigned || filters.status === 'unassigned') {
+        query = query.eq('status', 'paid').is('assigned_checker_id', null);
+      } else if (filters.status) {
+        query = query.eq('status', filters.status);
+      }
       if (filters.phone) query = query.eq('phone', filters.phone.replace(/[+-\s]/g, ''));
       if (filters.email) query = query.eq('email', filters.email);
       if (filters.result_type) query = query.eq('result_type', filters.result_type);
@@ -361,6 +370,130 @@ export class AdminService {
     } catch (error) {
       this.logger.error(`Get result check order details error: ${error.message}`);
       throw error instanceof HttpException ? error : new HttpException('Failed to get result check order details', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async assignCheckerToResultCheckOrder(id: string, dto?: { checker_id?: string; serial?: string; pin?: string }) {
+    try {
+      this.logger.debug(`Assigning checker for result check order ID: ${id}, DTO: ${JSON.stringify(dto)}`);
+      const { data: order, error: orderError } = await this.supabaseService
+        .getClient()
+        .from('result_check_orders')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (orderError || !order) {
+        throw new HttpException('Result check order not found', HttpStatus.NOT_FOUND);
+      }
+
+      const waecTypeMap: Record<string, string> = {
+        'BECE': 'BECE',
+        'WASSCE': 'WASSCE',
+        'WASSCE-NOVDEC': 'NOVDEC',
+      };
+      const waecType = waecTypeMap[order.result_type] || order.result_type;
+
+      let checker: Checker;
+
+      if (dto?.checker_id) {
+        const { data: foundChecker, error: findError } = await this.supabaseService
+          .getClient()
+          .from('checkers')
+          .select('id, serial, pin, waec_type')
+          .eq('id', dto.checker_id)
+          .single();
+
+        if (findError || !foundChecker) {
+          throw new HttpException('Specified checker not found in inventory', HttpStatus.BAD_REQUEST);
+        }
+        checker = foundChecker;
+      } else if (dto?.serial && dto?.pin) {
+        checker = {
+          serial: dto.serial,
+          pin: dto.pin,
+          waec_type: waecType as any,
+        };
+        const { data: insertedChecker, error: insertError } = await this.supabaseService
+          .getClient()
+          .from('checkers')
+          .insert([{ serial: dto.serial, pin: dto.pin, waec_type: waecType, order_id: order.id }])
+          .select()
+          .single();
+
+        if (!insertError && insertedChecker) {
+          checker.id = insertedChecker.id;
+        }
+      } else {
+        const { data: checkers, error: stockError } = await this.supabaseService
+          .getClient()
+          .from('checkers')
+          .select('id, serial, pin, waec_type')
+          .eq('waec_type', waecType)
+          .is('order_id', null)
+          .limit(1);
+
+        if (stockError || !checkers || checkers.length === 0) {
+          throw new HttpException(`No unassigned checkers available in inventory for ${waecType}`, HttpStatus.BAD_REQUEST);
+        }
+        checker = checkers[0];
+      }
+
+      if (checker.id) {
+        await this.supabaseService
+          .getClient()
+          .from('checkers')
+          .update({ order_id: order.id })
+          .eq('id', checker.id);
+      }
+
+      const { data: updatedOrder, error: updateOrderError } = await this.supabaseService
+        .getClient()
+        .from('result_check_orders')
+        .update({
+          status: 'paid',
+          assigned_checker_id: checker.id || null,
+          checker_serial: checker.serial,
+          checker_pin: checker.pin,
+        })
+        .eq('id', order.id)
+        .select()
+        .single();
+
+      if (updateOrderError) {
+        throw new HttpException('Failed to update result check order with checker', HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      // Send SMS to customer
+      try {
+        await this.paymentsService.sendCheckersViaSms(order.phone, [checker]);
+      } catch (smsError) {
+        this.logger.error(`Failed to send SMS to ${order.phone}: ${smsError.message}`);
+      }
+
+      if (order.email) {
+        try {
+          await this.paymentsService.sendCheckersViaEmail(order.email, [checker]);
+        } catch (emailError) {
+          this.logger.error(`Failed to send email to ${order.email}: ${emailError.message}`);
+        }
+      }
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Checker assigned successfully and SMS dispatched',
+        data: {
+          order: updatedOrder,
+          checker: {
+            serial: checker.serial,
+            pin: checker.pin,
+            waec_type: checker.waec_type,
+          },
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Assign checker to result check order error: ${error.message}`);
+      throw error instanceof HttpException ? error : new HttpException('Failed to assign checker', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 

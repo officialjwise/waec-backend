@@ -167,7 +167,8 @@ export class ResultCheckService {
           throw new HttpException('Payment amount mismatch', HttpStatus.BAD_REQUEST);
         }
 
-        if (order.status === 'paid') {
+        // If order is already paid AND has an assigned checker, return it immediately
+        if (order.status === 'paid' && order.assigned_checker_id) {
           return {
             status: 'success',
             message: 'Payment verified',
@@ -204,7 +205,29 @@ export class ResultCheckService {
           .limit(1);
 
         if (checkStockError || !checkers || checkers.length === 0) {
-          throw new HttpException('No unassigned checkers available at payment time', HttpStatus.INTERNAL_SERVER_ERROR);
+          // Update order status to paid even if no checker is in stock so payment is recorded
+          await this.supabaseService
+            .getClient()
+            .from('result_check_orders')
+            .update({ status: 'paid' })
+            .eq('id', order.id);
+
+          this.logger.warn(`Order ${order.id} marked as paid, but no checkers available for ${waecType}`);
+
+          return {
+            status: 'success',
+            message: 'Payment verified, but checker assignment is pending stock availability',
+            order: {
+              order_id: order.id,
+              result_type: order.result_type,
+              index_number: order.index_number,
+              year: order.year,
+              phone: order.phone,
+              email: order.email,
+              checker: null,
+              pending_checker: true,
+            },
+          };
         }
 
         const checker = checkers[0];
