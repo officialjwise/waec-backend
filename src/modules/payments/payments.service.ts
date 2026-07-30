@@ -26,11 +26,16 @@ export class PaymentsService {
       throw new HttpException('Payment configuration error', HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+    const baseCallbackUrl = order.callback_url || callbackUrl;
+    const finalCallbackUrl = baseCallbackUrl.includes('?')
+      ? `${baseCallbackUrl}&order_id=${order.id}&reference=${order.paystack_ref}`
+      : `${baseCallbackUrl}?order_id=${order.id}&reference=${order.paystack_ref}`;
+
     try {
       const payload: any = {
         email: order.email && order.email.trim() !== '' ? order.email : 'appiahyoung2002@gmail.com',
         amount: order.total_amount * 100, // Convert to kobo
-        callback_url: `${callbackUrl}?order_id=${order.id}&reference=${order.paystack_ref}`,
+        callback_url: finalCallbackUrl,
         metadata: {
           order_id: order.id,
           phone: order.phone,

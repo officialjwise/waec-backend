@@ -108,12 +108,16 @@ export class ResultCheckService {
       }
 
       try {
+        const baseCallbackUrl = this.configService.get('paystack.callbackUrl') || '';
+        const resultCheckCallbackUrl = baseCallbackUrl ? baseCallbackUrl.replace(/\/success\/?$/, '/check-results/success') : '';
+
         const paymentResponse = await this.paymentsService.initiatePayment({
           id: orderData.id,
           email: orderData.email,
           total_amount: orderData.total_amount,
           phone: orderData.phone,
           paystack_ref: orderData.paystack_ref,
+          callback_url: resultCheckCallbackUrl || undefined,
         });
 
         // The order already has the correct paystack_ref, but following the spec "Update the order with the Paystack reference"
