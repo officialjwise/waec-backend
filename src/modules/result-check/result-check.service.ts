@@ -120,7 +120,7 @@ export class ResultCheckService {
         await this.supabaseService
           .getClient()
           .from('result_check_orders')
-          .update({ paystack_ref: orderData.paystack_ref })
+          .update({ paystack_ref: paymentResponse.reference || orderData.paystack_ref })
           .eq('id', orderData.id);
 
         return { order_id: orderData.id, payment_url: paymentResponse.authorization_url };

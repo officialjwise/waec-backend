@@ -398,18 +398,24 @@ export class AdminService {
         this.logger.debug(`Confirming payment with Paystack for reference: ${order.paystack_ref}`);
         try {
           const verification = await this.paymentsService.verifyPayment(order.paystack_ref);
-          if (verification?.status !== 'success') {
-            throw new HttpException(`Cannot assign checker: Payment has not been received/confirmed by Paystack (Paystack status: ${verification?.status || 'unpaid'})`, HttpStatus.BAD_REQUEST);
-          }
-          const amountPaid = verification.amount / 100;
-          if (amountPaid !== Number(order.total_amount)) {
-            throw new HttpException(`Cannot assign checker: Payment amount mismatch. Expected ₵${order.total_amount}, paid ₵${amountPaid}`, HttpStatus.BAD_REQUEST);
+          if (verification?.status === 'success') {
+            const amountPaid = verification.amount / 100;
+            if (amountPaid !== Number(order.total_amount)) {
+              throw new HttpException(`Cannot assign checker: Payment amount mismatch. Expected ₵${order.total_amount}, paid ₵${amountPaid}`, HttpStatus.BAD_REQUEST);
+            }
+          } else if (verification?.status === 'abandoned' || verification?.status === 'failed') {
+            throw new HttpException(`Cannot assign checker: Payment has not been received/confirmed by Paystack (Paystack status: ${verification.status})`, HttpStatus.BAD_REQUEST);
           }
         } catch (paystackErr: any) {
-          this.logger.error(`Paystack verification failed for order ${order.id}: ${paystackErr.message}`);
-          throw paystackErr instanceof HttpException
-            ? paystackErr
-            : new HttpException(`Cannot assign checker: ${paystackErr.response?.data?.message || paystackErr.message || 'Payment not confirmed by Paystack'}`, HttpStatus.BAD_REQUEST);
+          if (paystackErr instanceof HttpException) {
+            throw paystackErr;
+          }
+          const errMsg = paystackErr.response?.data?.message || paystackErr.message || '';
+          if (errMsg.toLowerCase().includes('transaction reference not found') || errMsg.toLowerCase().includes('not found')) {
+            this.logger.warn(`Paystack reference ${order.paystack_ref} not found on Paystack API. Proceeding with manual admin assignment for order ${order.id}.`);
+          } else {
+            throw new HttpException(`Cannot assign checker: ${errMsg || 'Payment not confirmed by Paystack'}`, HttpStatus.BAD_REQUEST);
+          }
         }
       }
 
@@ -546,18 +552,24 @@ export class AdminService {
         this.logger.debug(`Confirming payment with Paystack for reference: ${order.paystack_ref}`);
         try {
           const verification = await this.paymentsService.verifyPayment(order.paystack_ref);
-          if (verification?.status !== 'success') {
-            throw new HttpException(`Cannot assign checkers: Payment has not been received/confirmed by Paystack (Paystack status: ${verification?.status || 'unpaid'})`, HttpStatus.BAD_REQUEST);
-          }
-          const amountPaid = verification.amount / 100;
-          if (amountPaid !== Number(order.total_amount)) {
-            throw new HttpException(`Cannot assign checkers: Payment amount mismatch. Expected ₵${order.total_amount}, paid ₵${amountPaid}`, HttpStatus.BAD_REQUEST);
+          if (verification?.status === 'success') {
+            const amountPaid = verification.amount / 100;
+            if (amountPaid !== Number(order.total_amount)) {
+              throw new HttpException(`Cannot assign checkers: Payment amount mismatch. Expected ₵${order.total_amount}, paid ₵${amountPaid}`, HttpStatus.BAD_REQUEST);
+            }
+          } else if (verification?.status === 'abandoned' || verification?.status === 'failed') {
+            throw new HttpException(`Cannot assign checkers: Payment has not been received/confirmed by Paystack (Paystack status: ${verification.status})`, HttpStatus.BAD_REQUEST);
           }
         } catch (paystackErr: any) {
-          this.logger.error(`Paystack verification failed for order ${order.id}: ${paystackErr.message}`);
-          throw paystackErr instanceof HttpException
-            ? paystackErr
-            : new HttpException(`Cannot assign checkers: ${paystackErr.response?.data?.message || paystackErr.message || 'Payment not confirmed by Paystack'}`, HttpStatus.BAD_REQUEST);
+          if (paystackErr instanceof HttpException) {
+            throw paystackErr;
+          }
+          const errMsg = paystackErr.response?.data?.message || paystackErr.message || '';
+          if (errMsg.toLowerCase().includes('transaction reference not found') || errMsg.toLowerCase().includes('not found')) {
+            this.logger.warn(`Paystack reference ${order.paystack_ref} not found on Paystack API. Proceeding with manual admin assignment for order ${order.id}.`);
+          } else {
+            throw new HttpException(`Cannot assign checkers: ${errMsg || 'Payment not confirmed by Paystack'}`, HttpStatus.BAD_REQUEST);
+          }
         }
       }
 

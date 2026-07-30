@@ -27,7 +27,7 @@ export class PaymentsService {
     }
 
     try {
-      const payload = {
+      const payload: any = {
         email: order.email && order.email.trim() !== '' ? order.email : 'appiahyoung2002@gmail.com',
         amount: order.total_amount * 100, // Convert to kobo
         callback_url: `${callbackUrl}?order_id=${order.id}&reference=${order.paystack_ref}`,
@@ -38,6 +38,9 @@ export class PaymentsService {
         },
         channels: ['mobile_money', 'card'], // ✅ Explicitly enable MoMo
       };
+      if (order.paystack_ref) {
+        payload.reference = order.paystack_ref;
+      }
 
       this.logger.debug(`Initiating Paystack payment with payload: ${JSON.stringify(payload)}`);
 
