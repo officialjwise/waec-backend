@@ -13,20 +13,38 @@ export class OtpService {
     private configService: ConfigService,
   ) {}
 
+  private getPhoneVariants(phone: string): string[] {
+    const rawDigits = phone.replace(/\D/g, '');
+    const coreNumber = rawDigits.slice(-9); // Get last 9 digits e.g. 541234567
+    if (!coreNumber || coreNumber.length < 8) {
+      return [phone];
+    }
+    return Array.from(
+      new Set([
+        phone,
+        rawDigits,
+        `0${coreNumber}`,
+        `233${coreNumber}`,
+        `+233${coreNumber}`,
+      ]),
+    );
+  }
+
   async initiateOtp(phone: string) {
     this.logger.debug(`Initiating OTP for phone: ${phone}`);
     
-    // Normalize phone number
+    // Normalize phone number and get variants
+    const phoneVariants = this.getPhoneVariants(phone);
     const normalizedPhone = this.normalizePhoneNumber(phone);
-    this.logger.debug(`Normalized phone: ${normalizedPhone}`);
+    this.logger.debug(`Normalized phone: ${normalizedPhone}, Phone variants: ${JSON.stringify(phoneVariants)}`);
 
     try {
-      // Check for existing orders for this phone
+      // Check for existing orders in 'orders' table
       const { data: orders, error: ordersError } = await this.supabaseService
         .getClient()
         .from('orders')
-        .select('*')
-        .eq('phone', normalizedPhone)
+        .select('id, status')
+        .in('phone', phoneVariants)
         .eq('status', 'paid');
 
       if (ordersError) {
@@ -34,10 +52,19 @@ export class OtpService {
         throw new HttpException('Failed to check orders', HttpStatus.INTERNAL_SERVER_ERROR);
       }
 
-      this.logger.debug(`Found ${orders?.length || 0} orders for phone: ${normalizedPhone}`);
+      // Check for existing orders in 'result_check_orders' table
+      const { data: rcOrders } = await this.supabaseService
+        .getClient()
+        .from('result_check_orders')
+        .select('id, status')
+        .in('phone', phoneVariants)
+        .eq('status', 'paid');
 
-      if (!orders || orders.length === 0) {
-        this.logger.debug(`No paid orders found for phone: ${normalizedPhone}`);
+      const totalFound = (orders?.length || 0) + (rcOrders?.length || 0);
+      this.logger.debug(`Found ${totalFound} paid orders for phone variants: ${JSON.stringify(phoneVariants)}`);
+
+      if (totalFound === 0) {
+        this.logger.debug(`No paid orders found for phone variants: ${JSON.stringify(phoneVariants)}`);
         return {
           message: 'No checker found for this number to be retrieved',
           statusCode: HttpStatus.NOT_FOUND,
@@ -201,12 +228,14 @@ export class OtpService {
           this.logger.error(`OTP session update error: ${updateError.message}`);
         }
 
-        // Get all checkers for this phone number from paid orders
+        const phoneVariants = this.getPhoneVariants(otpSession.phone);
+
+        // 1. Get checkers from 'orders' table
         const { data: orders, error: ordersError } = await this.supabaseService
           .getClient()
           .from('orders')
-          .select('checkers, waec_type, quantity, created_at')
-          .eq('phone', otpSession.phone)
+          .select('id, checkers, waec_type, quantity, created_at')
+          .in('phone', phoneVariants)
           .eq('status', 'paid')
           .order('created_at', { ascending: false });
 
@@ -215,23 +244,73 @@ export class OtpService {
           throw new HttpException('Failed to fetch orders', HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
-        // Flatten all checkers from all orders (only include orders with checkers)
-        const allCheckers = orders.reduce((acc, order) => {
+        const allCheckers: any[] = [];
+        const orderIds: string[] = [];
+
+        (orders || []).forEach((order) => {
+          if (order.id) orderIds.push(order.id);
           if (order.checkers && Array.isArray(order.checkers) && order.checkers.length > 0) {
-            return [
-              ...acc,
-              ...order.checkers.map((checker) => ({
+            order.checkers.forEach((checker: any) => {
+              allCheckers.push({
                 ...checker,
-                waec_type: order.waec_type,
+                waec_type: checker.waec_type || order.waec_type,
                 order_date: order.created_at,
-              })),
-            ];
+              });
+            });
           }
-          return acc;
-        }, []);
+        });
+
+        // 2. Fetch checkers directly from 'checkers' table for those orders
+        if (orderIds.length > 0) {
+          const { data: dbCheckers } = await this.supabaseService
+            .getClient()
+            .from('checkers')
+            .select('id, serial, pin, waec_type, order_id, created_at')
+            .in('order_id', orderIds);
+
+          if (dbCheckers && dbCheckers.length > 0) {
+            dbCheckers.forEach((dbc) => {
+              const exists = allCheckers.some((c) => c.serial === dbc.serial && c.pin === dbc.pin);
+              if (!exists) {
+                allCheckers.push({
+                  id: dbc.id,
+                  serial: dbc.serial,
+                  pin: dbc.pin,
+                  waec_type: dbc.waec_type,
+                  order_date: dbc.created_at,
+                });
+              }
+            });
+          }
+        }
+
+        // 3. Fetch checkers from 'result_check_orders' table
+        const { data: rcOrders } = await this.supabaseService
+          .getClient()
+          .from('result_check_orders')
+          .select('id, checker_serial, checker_pin, result_type, created_at')
+          .in('phone', phoneVariants)
+          .eq('status', 'paid');
+
+        if (rcOrders && rcOrders.length > 0) {
+          rcOrders.forEach((rco) => {
+            if (rco.checker_serial && rco.checker_pin) {
+              const exists = allCheckers.some((c) => c.serial === rco.checker_serial && c.pin === rco.checker_pin);
+              if (!exists) {
+                allCheckers.push({
+                  id: rco.id,
+                  serial: rco.checker_serial,
+                  pin: rco.checker_pin,
+                  waec_type: rco.result_type,
+                  order_date: rco.created_at,
+                });
+              }
+            }
+          });
+        }
 
         if (allCheckers.length === 0) {
-          this.logger.debug(`No paid checkers found for phone: ${otpSession.phone}`);
+          this.logger.debug(`No paid checkers found for phone variants: ${JSON.stringify(phoneVariants)}`);
           return {
             message: 'No checker found for this number to be retrieved',
             statusCode: HttpStatus.NOT_FOUND,

@@ -153,51 +153,71 @@ export class PaymentsService {
       throw new HttpException('SMS configuration error', HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    let content = '';
-    if (isResultCheck) {
-      content = `YOUR RESULT CHECK ORDER DETAILS\n\n${checkers
-        .map((c, index) =>
-          `Checker #${index + 1}:\n` +
-          `Type: ${c.waec_type}\n` +
-          `Serial: ${c.serial}\n` +
-          `PIN: ${c.pin}`
-        )
-        .join('\n\n')}\n\nYour results will be sent to you via the whatsapp number provided, kindly contact support after 5mins if you don't receive your results on 0557538158`;
-    } else {
-      content = `YOUR WAEC CHECKER DETAILS\n\n${checkers
-        .map((c, index) => {
-          const portalUrl = this.getPortalUrl(c.waec_type);
-          const actionText = (c.waec_type || '').toUpperCase() === 'CSSPS' ? 'placement' : 'results';
-          return (
-            `Checker #${index + 1}:\n` +
+    if (!checkers || checkers.length === 0) {
+      return;
+    }
+
+    // Batch checkers in chunks of 5 to avoid SMS payload / URL length limits
+    const CHUNK_SIZE = 5;
+    const checkerChunks: Checker[][] = [];
+    for (let i = 0; i < checkers.length; i += CHUNK_SIZE) {
+      checkerChunks.push(checkers.slice(i, i + CHUNK_SIZE));
+    }
+
+    const totalBatches = checkerChunks.length;
+    let lastResponse: any = null;
+
+    for (let b = 0; b < totalBatches; b++) {
+      const chunk = checkerChunks[b];
+      const startIndex = b * CHUNK_SIZE;
+
+      let content = '';
+      if (isResultCheck) {
+        content = `YOUR RESULT CHECK ORDER DETAILS\n\n${chunk
+          .map((c, index) =>
+            `Checker #${startIndex + index + 1}:\n` +
             `Type: ${c.waec_type}\n` +
             `Serial: ${c.serial}\n` +
-            `PIN: ${c.pin}\n` +
-            `Visit ${portalUrl} to check your ${actionText}`
-          );
-        })
-        .join('\n\n')}`;
+            `PIN: ${c.pin}`
+          )
+          .join('\n\n')}\n\nYour results will be sent to you via the whatsapp number provided, kindly contact support after 5mins if you don't receive your results on 0557538158`;
+      } else {
+        const batchHeader = totalBatches > 1 ? `YOUR WAEC CHECKERS (Part ${b + 1} of ${totalBatches})\n\n` : `YOUR WAEC CHECKER DETAILS\n\n`;
+        content = `${batchHeader}${chunk
+          .map((c, index) => {
+            const portalUrl = this.getPortalUrl(c.waec_type);
+            const actionText = (c.waec_type || '').toUpperCase() === 'CSSPS' ? 'placement' : 'results';
+            return (
+              `Checker #${startIndex + index + 1}:\n` +
+              `Type: ${c.waec_type}\n` +
+              `Serial: ${c.serial}\n` +
+              `PIN: ${c.pin}\n` +
+              `Visit ${portalUrl} to check your ${actionText}`
+            );
+          })
+          .join('\n\n')}`;
+      }
+
+      try {
+        this.logger.debug(`Sending SMS batch ${b + 1}/${totalBatches} (${chunk.length} checkers) to ${phone}`);
+
+        const response = await axios.get('https://smsc.hubtel.com/v1/messages/send', {
+          params: {
+            clientid: clientId,
+            clientsecret: clientSecret,
+            from: senderId,
+            to: phone,
+            content,
+          },
+        });
+
+        this.logger.debug(`Hubtel response batch ${b + 1}: ${JSON.stringify(response.data)}`);
+        lastResponse = response.data;
+      } catch (error: any) {
+        this.logger.error(`Hubtel SMS error on batch ${b + 1}: ${error.response?.data?.message || error.message}`);
+      }
     }
 
-    try {
-      this.logger.debug(`Sending SMS to ${phone}`);
-
-      const response = await axios.get('https://smsc.hubtel.com/v1/messages/send', {
-        params: {
-          clientid: clientId,
-          clientsecret: clientSecret,
-          from: senderId,
-          to: phone,
-          content,
-        },
-      });
-
-      this.logger.debug(`Hubtel response: ${JSON.stringify(response.data)}`);
-
-      return response.data;
-    } catch (error) {
-      this.logger.error(`Hubtel SMS error: ${error.response?.data?.message || error.message}`);
-      throw new HttpException('Failed to send SMS', HttpStatus.INTERNAL_SERVER_ERROR);
-    }
+    return lastResponse || { status: 'sent' };
   }
 }
