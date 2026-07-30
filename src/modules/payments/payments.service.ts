@@ -157,7 +157,33 @@ export class PaymentsService {
       return;
     }
 
-    // Batch checkers in chunks of 5 to avoid SMS payload / URL length limits
+    // Save SMS costs for bulk orders > 5 checkers by sending 1 single direction SMS to Retrieve Checkers
+    if (!isResultCheck && checkers.length > 5) {
+      const siteUrl = this.configService.get('FRONTEND_URL') || 'https://youngpres.com';
+      const waecType = checkers[0]?.waec_type || 'WAEC';
+      const content =
+        `YOUR WAEC CHECKERS PURCHASE SUCCESSFUL\n\n` +
+        `Thank you for your purchase of ${checkers.length} ${waecType} Checkers!\n\n` +
+        `Your checkers are displayed on your screen. You can also view or retrieve all your checkers anytime by visiting ${siteUrl} and selecting "Retrieve Checkers".`;
+
+      try {
+        this.logger.debug(`Sending single bulk summary SMS (${checkers.length} checkers) to ${phone}`);
+        const response = await axios.get('https://smsc.hubtel.com/v1/messages/send', {
+          params: {
+            clientid: clientId,
+            clientsecret: clientSecret,
+            from: senderId,
+            to: phone,
+            content,
+          },
+        });
+        this.logger.debug(`Hubtel bulk summary response: ${JSON.stringify(response.data)}`);
+        return response.data;
+      } catch (error: any) {
+        this.logger.error(`Hubtel bulk summary SMS error: ${error.response?.data?.message || error.message}`);
+        return { status: 'failed' };
+      }
+    }
     const CHUNK_SIZE = 5;
     const checkerChunks: Checker[][] = [];
     for (let i = 0; i < checkers.length; i += CHUNK_SIZE) {
