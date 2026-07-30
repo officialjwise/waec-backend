@@ -20,7 +20,9 @@ export class AdminService {
       this.logger.debug(`Listing orders with filters: ${JSON.stringify(filters)}`);
       let query = this.supabaseService.getClient().from('orders').select('id, phone, email, waec_type, quantity, status, created_at, paystack_ref, checkers');
 
-      if (filters.unassigned || filters.status === 'unassigned') {
+      if (filters.status === 'new') {
+        query = query.or('is_sorted.is.null,is_sorted.eq.false');
+      } else if (filters.unassigned || filters.status === 'unassigned') {
         query = query.eq('status', 'paid').is('checkers', null);
       } else if (filters.status) query = query.eq('status', filters.status);
       if (filters.phone) query = query.eq('phone', filters.phone.replace(/[+-\s]/g, ''));
@@ -320,7 +322,9 @@ export class AdminService {
       this.logger.debug(`Listing result check orders with filters: ${JSON.stringify(filters)}`);
       let query = this.supabaseService.getClient().from('result_check_orders').select('*');
 
-      if (filters.unassigned || filters.status === 'unassigned') {
+      if (filters.status === 'new') {
+        query = query.or('is_sorted.is.null,is_sorted.eq.false');
+      } else if (filters.unassigned || filters.status === 'unassigned') {
         query = query.eq('status', 'paid').is('assigned_checker_id', null);
       } else if (filters.status) {
         query = query.eq('status', filters.status);
@@ -794,6 +798,134 @@ export class AdminService {
     } catch (error) {
       this.logger.error(`Toggle release year error: ${error.message}`);
       throw error instanceof HttpException ? error : new HttpException('Failed to toggle release year', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async getNewOrdersCount() {
+    try {
+      const { data: mainOrders } = await this.supabaseService
+        .getClient()
+        .from('orders')
+        .select('id, is_sorted')
+        .or('is_sorted.is.null,is_sorted.eq.false');
+
+      const { data: rcOrders } = await this.supabaseService
+        .getClient()
+        .from('result_check_orders')
+        .select('id, is_sorted')
+        .or('is_sorted.is.null,is_sorted.eq.false');
+
+      const mainCount = mainOrders?.length || 0;
+      const rcCount = rcOrders?.length || 0;
+
+      return {
+        statusCode: HttpStatus.OK,
+        data: {
+          mainOrdersCount: mainCount,
+          resultCheckOrdersCount: rcCount,
+          totalNewCount: mainCount + rcCount,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`getNewOrdersCount error: ${error.message}`);
+      return {
+        statusCode: HttpStatus.OK,
+        data: { mainOrdersCount: 0, resultCheckOrdersCount: 0, totalNewCount: 0 },
+      };
+    }
+  }
+
+  async markOrderAsSorted(id: string, type: 'main' | 'result_check' = 'main') {
+    try {
+      const table = type === 'result_check' ? 'result_check_orders' : 'orders';
+      const { data, error } = await this.supabaseService
+        .getClient()
+        .from(table)
+        .update({ is_sorted: true })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        throw new HttpException(`Failed to mark order as sorted: ${error.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Order marked as sorted successfully',
+        data,
+      };
+    } catch (error: any) {
+      this.logger.error(`markOrderAsSorted error: ${error.message}`);
+      throw error instanceof HttpException ? error : new HttpException('Failed to mark order as sorted', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async deletePendingOrder(id: string, type: 'main' | 'result_check' = 'main', force: boolean = false) {
+    try {
+      const table = type === 'result_check' ? 'result_check_orders' : 'orders';
+      const { data: order, error: fetchError } = await this.supabaseService
+        .getClient()
+        .from(table)
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (fetchError || !order) {
+        throw new HttpException('Order not found', HttpStatus.NOT_FOUND);
+      }
+
+      if (order.status === 'paid') {
+        throw new HttpException('Cannot delete order: Payment has been completed and verified as PAID.', HttpStatus.BAD_REQUEST);
+      }
+
+      // Live Paystack payment verification before deletion
+      if (order.paystack_ref) {
+        try {
+          const verification = await this.paymentsService.verifyPayment(order.paystack_ref);
+          if (verification?.status === 'success') {
+            await this.supabaseService
+              .getClient()
+              .from(table)
+              .update({ status: 'paid' })
+              .eq('id', id);
+
+            throw new HttpException('Payment WAS received on Paystack (Paystack status: success). Order status updated to PAID. Deletion cancelled.', HttpStatus.BAD_REQUEST);
+          }
+        } catch (paystackErr: any) {
+          if (paystackErr instanceof HttpException && paystackErr.getStatus() === HttpStatus.BAD_REQUEST && paystackErr.message.includes('Payment WAS received')) {
+            throw paystackErr;
+          }
+          this.logger.debug(`Paystack check on deletion for order ${id}: ${paystackErr.message}`);
+        }
+      }
+
+      if (!force) {
+        return {
+          statusCode: HttpStatus.OK,
+          canDelete: true,
+          message: `Paystack confirmed NO payment was received for Order #${id.slice(0, 8)}. Do you want to delete this pending order?`,
+          order,
+        };
+      }
+
+      const { error: deleteError } = await this.supabaseService
+        .getClient()
+        .from(table)
+        .delete()
+        .eq('id', id);
+
+      if (deleteError) {
+        throw new HttpException(`Failed to delete order: ${deleteError.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Pending unpaid order deleted successfully',
+      };
+    } catch (error: any) {
+      this.logger.error(`deletePendingOrder error: ${error.message}`);
+      throw error instanceof HttpException ? error : new HttpException('Failed to delete pending order', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 }

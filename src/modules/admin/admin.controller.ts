@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Put, Body, Query, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Get, Param, Post, Put, Delete, Body, Query, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -8,6 +8,11 @@ import { Express } from 'express';
 @UseGuards(AdminAuthGuard)
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
+
+  @Get('orders/counts/new')
+  async getNewOrdersCount() {
+    return this.adminService.getNewOrdersCount();
+  }
 
   @Get('orders')
   async listOrders(
@@ -130,5 +135,25 @@ export class AdminController {
   @Put('result-release-years/:id')
   async toggleReleaseYear(@Param('id') id: string) {
     return this.adminService.toggleReleaseYear(id);
+  }
+
+  @Post('orders/:id/mark-sorted')
+  async markOrderAsSorted(@Param('id') id: string) {
+    return this.adminService.markOrderAsSorted(id, 'main');
+  }
+
+  @Post('result-check-orders/:id/mark-sorted')
+  async markResultCheckOrderAsSorted(@Param('id') id: string) {
+    return this.adminService.markOrderAsSorted(id, 'result_check');
+  }
+
+  @Delete('orders/:id')
+  async deleteOrder(@Param('id') id: string, @Query('force') force: string) {
+    return this.adminService.deletePendingOrder(id, 'main', force === 'true');
+  }
+
+  @Delete('result-check-orders/:id')
+  async deleteResultCheckOrder(@Param('id') id: string, @Query('force') force: string) {
+    return this.adminService.deletePendingOrder(id, 'result_check', force === 'true');
   }
 }
