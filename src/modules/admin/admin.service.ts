@@ -373,7 +373,7 @@ export class AdminService {
     }
   }
 
-  async assignCheckerToResultCheckOrder(id: string, dto?: { checker_id?: string; serial?: string; pin?: string }) {
+  async assignCheckerToResultCheckOrder(id: string, dto?: { checker_id?: string; serial?: string; pin?: string; force?: boolean }) {
     try {
       this.logger.debug(`Assigning checker for result check order ID: ${id}, DTO: ${JSON.stringify(dto)}`);
       const { data: order, error: orderError } = await this.supabaseService
@@ -385,6 +385,30 @@ export class AdminService {
 
       if (orderError || !order) {
         throw new HttpException('Result check order not found', HttpStatus.NOT_FOUND);
+      }
+
+      // Verify payment with Paystack if order is not already marked as paid
+      if (order.status !== 'paid' && !dto?.force) {
+        if (!order.paystack_ref) {
+          throw new HttpException('Cannot assign checker: No payment reference found for this order', HttpStatus.BAD_REQUEST);
+        }
+
+        this.logger.debug(`Confirming payment with Paystack for reference: ${order.paystack_ref}`);
+        try {
+          const verification = await this.paymentsService.verifyPayment(order.paystack_ref);
+          if (verification?.status !== 'success') {
+            throw new HttpException(`Cannot assign checker: Payment has not been received/confirmed by Paystack (Paystack status: ${verification?.status || 'unpaid'})`, HttpStatus.BAD_REQUEST);
+          }
+          const amountPaid = verification.amount / 100;
+          if (amountPaid !== Number(order.total_amount)) {
+            throw new HttpException(`Cannot assign checker: Payment amount mismatch. Expected ₵${order.total_amount}, paid ₵${amountPaid}`, HttpStatus.BAD_REQUEST);
+          }
+        } catch (paystackErr: any) {
+          this.logger.error(`Paystack verification failed for order ${order.id}: ${paystackErr.message}`);
+          throw paystackErr instanceof HttpException
+            ? paystackErr
+            : new HttpException(`Cannot assign checker: ${paystackErr.response?.data?.message || paystackErr.message || 'Payment not confirmed by Paystack'}`, HttpStatus.BAD_REQUEST);
+        }
       }
 
       const waecTypeMap: Record<string, string> = {

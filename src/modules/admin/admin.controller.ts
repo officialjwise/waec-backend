@@ -90,7 +90,7 @@ export class AdminController {
   @Post('result-check-orders/:id/assign-checker')
   async assignCheckerToResultCheckOrder(
     @Param('id') id: string,
-    @Body() body: { checker_id?: string; serial?: string; pin?: string },
+    @Body() body: { checker_id?: string; serial?: string; pin?: string; force?: boolean },
   ) {
     return this.adminService.assignCheckerToResultCheckOrder(id, body);
   }
