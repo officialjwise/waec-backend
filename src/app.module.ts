@@ -9,6 +9,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { ResultCheckModule } from './modules/result-check/result-check.module';
 import { CommonModule } from './common/common.module';
 import { LogMiddleware } from './middleware/log.middleware';
+import { ScheduleModule } from '@nestjs/schedule';
 import supabaseConfig from './config/supabase.config';
 import paystackConfig from './config/paystack.config';
 import hubtelConfig from './config/hubtel.config';
@@ -20,6 +21,7 @@ import hubtelConfig from './config/hubtel.config';
       envFilePath: '.env',
       load: [supabaseConfig, paystackConfig, hubtelConfig],
     }),
+    ScheduleModule.forRoot(),
     CommonModule,
     AuthModule,
     CheckersModule,

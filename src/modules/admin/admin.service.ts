@@ -441,6 +441,23 @@ export class AdminService {
         throw new HttpException('Result check order not found', HttpStatus.NOT_FOUND);
       }
 
+      // If a checker is already assigned to this result check order and force is not set, return existing assignment
+      if ((order.assigned_checker_id || (order.checker_serial && order.checker_pin)) && !dto?.force) {
+        this.logger.warn(`Result check order ${id} already has an assigned checker. Returning existing checker.`);
+        return {
+          statusCode: HttpStatus.OK,
+          message: 'Checker has already been assigned to this order',
+          data: {
+            order,
+            checker: {
+              serial: order.checker_serial,
+              pin: order.checker_pin,
+              waec_type: order.result_type,
+            },
+          },
+        };
+      }
+
       // Verify payment with Paystack if order is not already marked as paid
       if (order.status !== 'paid' && !dto?.force) {
         if (!order.paystack_ref) {
